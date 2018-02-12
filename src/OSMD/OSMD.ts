@@ -1,17 +1,17 @@
-import {IXmlElement} from "./../Common/FileIO/Xml";
-import {VexFlowMusicSheetCalculator} from "./../MusicalScore/Graphical/VexFlow/VexFlowMusicSheetCalculator";
-import {VexFlowBackend} from "./../MusicalScore/Graphical/VexFlow/VexFlowBackend";
-import {MusicSheetReader} from "./../MusicalScore/ScoreIO/MusicSheetReader";
-import {GraphicalMusicSheet} from "./../MusicalScore/Graphical/GraphicalMusicSheet";
-import {MusicSheetCalculator} from "./../MusicalScore/Graphical/MusicSheetCalculator";
-import {VexFlowMusicSheetDrawer} from "./../MusicalScore/Graphical/VexFlow/VexFlowMusicSheetDrawer";
-import {SvgVexFlowBackend} from "./../MusicalScore/Graphical/VexFlow/SvgVexFlowBackend";
-import {CanvasVexFlowBackend} from "./../MusicalScore/Graphical/VexFlow/CanvasVexFlowBackend";
-import {MusicSheet} from "./../MusicalScore/MusicSheet";
-import {Cursor} from "./Cursor";
-import {MXLHelper} from "../Common/FileIO/Mxl";
-import {Promise} from "es6-promise";
-import {AJAX} from "./AJAX";
+import { IXmlElement } from "./../Common/FileIO/Xml";
+import { VexFlowMusicSheetCalculator } from "./../MusicalScore/Graphical/VexFlow/VexFlowMusicSheetCalculator";
+import { VexFlowBackend } from "./../MusicalScore/Graphical/VexFlow/VexFlowBackend";
+import { MusicSheetReader } from "./../MusicalScore/ScoreIO/MusicSheetReader";
+import { GraphicalMusicSheet } from "./../MusicalScore/Graphical/GraphicalMusicSheet";
+import { MusicSheetCalculator } from "./../MusicalScore/Graphical/MusicSheetCalculator";
+import { VexFlowMusicSheetDrawer } from "./../MusicalScore/Graphical/VexFlow/VexFlowMusicSheetDrawer";
+import { SvgVexFlowBackend } from "./../MusicalScore/Graphical/VexFlow/SvgVexFlowBackend";
+import { CanvasVexFlowBackend } from "./../MusicalScore/Graphical/VexFlow/CanvasVexFlowBackend";
+import { MusicSheet } from "./../MusicalScore/MusicSheet";
+import { Cursor } from "./Cursor";
+import { MXLHelper } from "../Common/FileIO/Mxl";
+import { Promise } from "es6-promise";
+import { AJAX } from "./AJAX";
 import * as log from "loglevel";
 
 export class OSMD {
@@ -20,7 +20,7 @@ export class OSMD {
      * @param container is either the ID, or the actual "div" element which will host the music sheet
      * @autoResize automatically resize the sheet to full page width on window resize
      */
-    constructor(container: string|HTMLElement, autoResize: boolean = false, backend: string = "canvas") {
+    constructor(container: string | HTMLElement, autoResize: boolean = false, backend: string = "canvas") {
         // Store container element
         if (typeof container === "string") {
             // ID passed
@@ -63,11 +63,19 @@ export class OSMD {
     private drawer: VexFlowMusicSheetDrawer;
     private graphic: GraphicalMusicSheet;
 
+    public get graphicalMusicSheet(): GraphicalMusicSheet {
+        return this.graphic;
+    }
+    public get musicSheet(): MusicSheet {
+        return this.sheet;
+    }
+
+
     /**
      * Load a MusicXML file
      * @param content is either the url of a file, or the root node of a MusicXML document, or the string content of a .xml/.mxl file
      */
-    public load(content: string|Document): Promise<{}> {
+    public load(content: string | Document): Promise<{}> {
         // Warning! This function is asynchronous! No error handling is done here.
         this.reset();
         if (typeof content === "string") {
@@ -269,3 +277,5 @@ export class OSMD {
         window.setTimeout(endCallback, 1);
     }
 }
+
+export { VexFlowMeasure } from "./../MusicalScore/Graphical/VexFlow/VexFlowMeasure";
