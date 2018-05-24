@@ -3,17 +3,17 @@ import {MusicPartManager} from "../MusicalScore/MusicParts/MusicPartManager";
 import {VoiceEntry} from "../MusicalScore/VoiceData/VoiceEntry";
 import {VexFlowStaffEntry} from "../MusicalScore/Graphical/VexFlow/VexFlowStaffEntry";
 import {MusicSystem} from "../MusicalScore/Graphical/MusicSystem";
-import {OSMD} from "./OSMD";
+import {OpenSheetMusicDisplay} from "./OpenSheetMusicDisplay";
 import {GraphicalMusicSheet} from "../MusicalScore/Graphical/GraphicalMusicSheet";
 
 /**
  * A cursor which can iterate through the music sheet.
  */
 export class Cursor {
-  constructor(container: HTMLElement, osmd: OSMD) {
+  constructor(container: HTMLElement, openSheetMusicDisplay: OpenSheetMusicDisplay) {
     this.container = container;
-    this.osmd = osmd;
-    let curs: HTMLElement = document.createElement("img");
+    this.openSheetMusicDisplay = openSheetMusicDisplay;
+    const curs: HTMLElement = document.createElement("img");
     curs.style.position = "absolute";
     curs.style.zIndex = "-1";
     this.cursorElement = <HTMLImageElement>curs;
@@ -21,7 +21,7 @@ export class Cursor {
   }
 
   private container: HTMLElement;
-  private osmd: OSMD;
+  private openSheetMusicDisplay: OpenSheetMusicDisplay;
   private manager: MusicPartManager;
   private iterator: MusicPartManagerIterator;
   private graphic: GraphicalMusicSheet;
@@ -44,31 +44,31 @@ export class Cursor {
     this.update();
     // Forcing the sheet to re-render is not necessary anymore,
     // since the cursor is an HTML element.
-    // this.osmd.render();
+    // this.openSheetMusicDisplay.render();
   }
 
   public update(): void {
-    // Warning! This should NEVER call this.osmd.render()
+    // Warning! This should NEVER call this.openSheetMusicDisplay.render()
     if (this.hidden) {
       return;
     }
     this.graphic.Cursors.length = 0;
-    let iterator: MusicPartManagerIterator = this.iterator;
+    const iterator: MusicPartManagerIterator = this.iterator;
     if (iterator.EndReached || iterator.CurrentVoiceEntries === undefined || iterator.CurrentVoiceEntries.length === 0) {
       return;
     }
     let x: number = 0, y: number = 0, height: number = 0;
 
-    let voiceEntry: VoiceEntry = iterator.CurrentVoiceEntries[0];
-    let measureIndex: number = voiceEntry.ParentSourceStaffEntry.VerticalContainerParent.ParentMeasure.measureListIndex;
-    let staffIndex: number = voiceEntry.ParentSourceStaffEntry.ParentStaff.idInMusicSheet;
-    let gse: VexFlowStaffEntry =
+    const voiceEntry: VoiceEntry = iterator.CurrentVoiceEntries[0];
+    const measureIndex: number = voiceEntry.ParentSourceStaffEntry.VerticalContainerParent.ParentMeasure.measureListIndex;
+    const staffIndex: number = voiceEntry.ParentSourceStaffEntry.ParentStaff.idInMusicSheet;
+    const gse: VexFlowStaffEntry =
       <VexFlowStaffEntry>this.graphic.findGraphicalStaffEntryFromMeasureList(staffIndex, measureIndex, voiceEntry.ParentSourceStaffEntry);
 
     x = gse.PositionAndShape.AbsolutePosition.x;
-    let musicSystem: MusicSystem = gse.parentMeasure.parentMusicSystem;
+    const musicSystem: MusicSystem = gse.parentMeasure.parentMusicSystem;
     y = musicSystem.PositionAndShape.AbsolutePosition.y + musicSystem.StaffLines[0].PositionAndShape.RelativePosition.y;
-    let endY: number = musicSystem.PositionAndShape.AbsolutePosition.y +
+    const endY: number = musicSystem.PositionAndShape.AbsolutePosition.y +
       musicSystem.StaffLines[musicSystem.StaffLines.length - 1].PositionAndShape.RelativePosition.y + 4.0;
     height = endY - y;
 
@@ -89,11 +89,11 @@ export class Cursor {
     // // let cursor: GraphicalLine = new GraphicalLine(new PointF2D(x, y), new PointF2D(x, y + height), 3, OutlineAndFillStyleEnum.PlaybackCursor);
 
     // This the current HTML Cursor:
-    let cursorElement: HTMLImageElement = this.cursorElement;
-    cursorElement.style.top = (y * 10.0 * this.osmd.zoom) + "px";
-    cursorElement.style.left = ((x - 1.5) * 10.0 * this.osmd.zoom) + "px";
-    cursorElement.height = (height * 10.0 * this.osmd.zoom);
-    let newWidth: number = 3 * 10.0 * this.osmd.zoom;
+    const cursorElement: HTMLImageElement = this.cursorElement;
+    cursorElement.style.top = (y * 10.0 * this.openSheetMusicDisplay.zoom) + "px";
+    cursorElement.style.left = ((x - 1.5) * 10.0 * this.openSheetMusicDisplay.zoom) + "px";
+    cursorElement.height = (height * 10.0 * this.openSheetMusicDisplay.zoom);
+    const newWidth: number = 3 * 10.0 * this.openSheetMusicDisplay.zoom;
     if (newWidth !== cursorElement.width) {
       cursorElement.width = newWidth;
       this.updateStyle(newWidth);
@@ -113,7 +113,7 @@ export class Cursor {
     //this.graphic.Cursors.length = 0;
     // Forcing the sheet to re-render is not necessary anymore
     //if (!this.hidden) {
-    //    this.osmd.render();
+    //    this.openSheetMusicDisplay.render();
     //}
     this.hidden = true;
   }
@@ -140,13 +140,13 @@ export class Cursor {
   private updateStyle(width: number, color: string = "#33e02f"): void {
     // Create a dummy canvas to generate the gradient for the cursor
     // FIXME This approach needs to be improved
-    let c: HTMLCanvasElement = document.createElement("canvas");
+    const c: HTMLCanvasElement = document.createElement("canvas");
     c.width = this.cursorElement.width;
     c.height = 1;
-    let ctx: CanvasRenderingContext2D = c.getContext("2d");
+    const ctx: CanvasRenderingContext2D = c.getContext("2d");
     ctx.globalAlpha = 0.5;
     // Generate the gradient
-    let gradient: CanvasGradient = ctx.createLinearGradient(0, 0, this.cursorElement.width, 0);
+    const gradient: CanvasGradient = ctx.createLinearGradient(0, 0, this.cursorElement.width, 0);
     gradient.addColorStop(0, "white"); // it was: "transparent"
     gradient.addColorStop(0.2, color);
     gradient.addColorStop(0.8, color);

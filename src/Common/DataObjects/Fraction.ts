@@ -39,13 +39,13 @@ export class Fraction {
   }
 
   public static plus(f1: Fraction, f2: Fraction): Fraction {
-    let sum: Fraction = f1.clone();
+    const sum: Fraction = f1.clone();
     sum.Add(f2);
     return sum;
   }
 
   public static minus(f1: Fraction, f2: Fraction): Fraction {
-    let sum: Fraction = f1.clone();
+    const sum: Fraction = f1.clone();
     sum.Sub(f2);
     return sum;
   }
@@ -121,6 +121,7 @@ export class Fraction {
   public set Denominator(value: number) {
     if (this.denominator !== value) {
       this.denominator = value;
+      // don't simplify in case of a GraceNote (need it in order to set the right symbol)
       if (this.numerator !== 0) {
         this.simplify();
       }
@@ -139,6 +140,10 @@ export class Fraction {
     }
   }
 
+  /**
+   * Returns the unified numerator where the whole value will be expanded
+   * with the denominator and added to the existing numerator.
+   */
   public GetExpandedNumerator(): number {
     return this.wholeValue * this.denominator + this.numerator;
   }
@@ -166,6 +171,8 @@ export class Fraction {
   // }
 
   public Add(fraction: Fraction): void {
+    // normally should check if denominator or fraction.denominator is 0 but in our case
+    // a zero denominator doesn't make sense
     this.numerator = (this.wholeValue * this.denominator + this.numerator) * fraction.denominator +
       (fraction.wholeValue * fraction.denominator + fraction.numerator) * this.denominator;
     this.denominator = this.denominator * fraction.denominator;
@@ -175,6 +182,8 @@ export class Fraction {
   }
 
   public Sub(fraction: Fraction): void {
+    // normally should check if denominator or fraction.denominator is 0 but in our case
+    // a zero denominator doesn't make sense
     this.numerator = (this.wholeValue * this.denominator + this.numerator) * fraction.denominator -
       (fraction.wholeValue * fraction.denominator + fraction.numerator) * this.denominator;
     this.denominator = this.denominator * fraction.denominator;
@@ -182,20 +191,24 @@ export class Fraction {
     this.simplify();
     this.setRealValue();
   }
-
+  /**
+   * Brute Force quanization by searching incremental with the numerator until the denominator is
+   * smaller/equal than the desired one.
+   * @param maxAllowedDenominator
+   */
   public Quantize(maxAllowedDenominator: number): Fraction {
     if (this.denominator <= maxAllowedDenominator) {
       return this;
     }
 
-    let upTestFraction: Fraction = new Fraction(this.numerator + 1, this.denominator, this.wholeValue);
+    const upTestFraction: Fraction = new Fraction(this.numerator + 1, this.denominator, this.wholeValue);
 
     while (upTestFraction.Denominator > maxAllowedDenominator) {
       upTestFraction.Numerator++;
     }
 
     if (this.numerator > this.denominator) {
-      let downTestFraction: Fraction = new Fraction(this.numerator - 1, this.denominator, this.wholeValue);
+      const downTestFraction: Fraction = new Fraction(this.numerator - 1, this.denominator, this.wholeValue);
 
       while (downTestFraction.Denominator > maxAllowedDenominator) {
         downTestFraction.Numerator--;
@@ -213,7 +226,7 @@ export class Fraction {
   }
 
   public CompareTo(obj: Fraction): number {
-    let diff: number = this.realValue - obj.realValue;
+    const diff: number = this.realValue - obj.realValue;
     // Return the sign of diff
     return diff ? diff < 0 ? -1 : 1 : 0;
   }
@@ -239,17 +252,20 @@ export class Fraction {
   }
 
   private simplify(): void {
+    // don't simplify in case of a GraceNote (need it in order to set the right symbol)
     if (this.numerator === 0) {
       this.denominator = 1;
       return;
     }
 
-    let i: number = Fraction.greatestCommonDenominator(Math.abs(this.numerator), Math.abs(this.denominator));
+    // normally should check if denominator or fraction.denominator is 0 but in our case a zero denominator
+    // doesn't make sense. Could probably be optimized
+    const i: number = Fraction.greatestCommonDenominator(Math.abs(this.numerator), Math.abs(this.denominator));
 
     this.numerator /= i;
     this.denominator /= i;
 
-    let whole: number = Math.floor(this.numerator / this.denominator);
+    const whole: number = Math.floor(this.numerator / this.denominator);
     if (whole !== 0) {
       this.wholeValue += whole;
       this.numerator -= whole * this.denominator;
@@ -258,12 +274,12 @@ export class Fraction {
       }
     }
     if (this.denominator > Fraction.maximumAllowedNumber) {
-      let factor: number = <number>this.denominator / Fraction.maximumAllowedNumber;
+      const factor: number = <number>this.denominator / Fraction.maximumAllowedNumber;
       this.numerator = <number>Math.round(this.numerator / factor);
       this.denominator = <number>Math.round(this.denominator / factor);
     }
     if (this.numerator > Fraction.maximumAllowedNumber) {
-      let factor: number = <number>this.numerator / Fraction.maximumAllowedNumber;
+      const factor: number = <number>this.numerator / Fraction.maximumAllowedNumber;
       this.numerator = <number>Math.round(this.numerator / factor);
       this.denominator = <number>Math.round(this.denominator / factor);
     }

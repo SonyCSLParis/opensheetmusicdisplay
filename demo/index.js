@@ -1,31 +1,34 @@
-import { OSMD } from '../src/OSMD/OSMD';
+import { OpenSheetMusicDisplay } from '../src/OpenSheetMusicDisplay/OpenSheetMusicDisplay';
 
 /*jslint browser:true */
 (function () {
     "use strict";
-    var osmdObj;
+    var openSheetMusicDisplay;
     // The folder of the demo files
-    var folder = "",
+    var folder = process.env.STATIC_FILES_SUBFOLDER ? process.env.STATIC_FILES_SUBFOLDER + "/" : "",
     // The available demos
         demos = {
-            "Beethoven - AnDieFerneGeliebte": "Beethoven_AnDieFerneGeliebte.xml",
+            "Beethoven - An die ferne Geliebte": "Beethoven_AnDieFerneGeliebte.xml",
             "M. Clementi - Sonatina Op.36 No.1 Pt.1": "MuzioClementi_SonatinaOpus36No1_Part1.xml",
             "M. Clementi - Sonatina Op.36 No.1 Pt.2": "MuzioClementi_SonatinaOpus36No1_Part2.xml",
             "M. Clementi - Sonatina Op.36 No.3 Pt.1": "MuzioClementi_SonatinaOpus36No3_Part1.xml",
             "M. Clementi - Sonatina Op.36 No.3 Pt.2": "MuzioClementi_SonatinaOpus36No3_Part2.xml",
-            "J.S. Bach - Air": "JohannSebastianBach_Air.xml",
-            "G.P. Telemann - Sonata, TWV 40:102 - 1. Dolce": "TelemannWV40.102_Sonate-Nr.1.1-Dolce.xml",
-            "C. Gounod - Meditation": "CharlesGounod_Meditation.xml",
             "J.S. Bach - Praeludium In C Dur BWV846 1": "JohannSebastianBach_PraeludiumInCDur_BWV846_1.xml",
+            "J.S. Bach - Air": "JohannSebastianBach_Air.xml",
+            "C. Gounod - Meditation": "CharlesGounod_Meditation.xml",
             "J. Haydn - Concertante Cello": "JosephHaydn_ConcertanteCello.xml",
+            "Mozart - An Chloe": "Mozart_AnChloe.xml",
+            "Mozart - Das Veilchen": "Mozart_DasVeilchen.xml",
+            "Mozart - Trio": "MozartTrio.mxl",
             "S. Joplin - Elite Syncopations": "ScottJoplin_EliteSyncopations.xml",
             "S. Joplin - The Entertainer": "ScottJoplin_The_Entertainer.xml",
             "ActorPreludeSample": "ActorPreludeSample.xml",
-            "an chloe - mozart": "an chloe - mozart.xml",
-            "das veilchen - mozart": "das veilchen - mozart.xml",
-            "Dichterliebe01": "Dichterliebe01.xml",
-            "mandoline - debussy": "mandoline - debussy.xml",
-            "MozartTrio": "MozartTrio.mxl",
+            "R. Schumann - Dichterliebe": "Dichterliebe01.xml",
+            "C. Debussy - Mandoline": "Debussy_Mandoline.xml",
+            "France Levasseur - Parlez Mois": "Parlez-moi.mxl",
+            "Telemann - Sonate-Nr.1.1-Dolce": "TelemannWV40.102_Sonate-Nr.1.1-Dolce.xml",
+            "Telemann - Sonate-Nr.1.2-Allegro": "TelemannWV40.102_Sonate-Nr.1.2-Allegro-F-Dur.xml",
+            "Saltarello": "Saltarello.mxl",
         },
 
         zoom = 1.0,
@@ -78,6 +81,9 @@ import { OSMD } from '../src/OSMD/OSMD';
         }
         select.onchange = selectOnChange;
 
+        // Pre-select default music piece
+        select.value = "MuzioClementi_SonatinaOpus36No1_Part1.xml";
+
         custom.appendChild(document.createTextNode("Custom"));
 
         // Create zoom controls
@@ -91,8 +97,8 @@ import { OSMD } from '../src/OSMD/OSMD';
         };
 
         // Create OSMD object and canvas
-        osmdObj = new OSMD(canvas, false);
-        osmdObj.setLogLevel('info');
+        openSheetMusicDisplay = new OpenSheetMusicDisplay(canvas, false, backendSelect.value);
+        openSheetMusicDisplay.setLogLevel('info');
         document.body.appendChild(canvas);
 
         // Set resize event handler
@@ -104,7 +110,7 @@ import { OSMD } from '../src/OSMD/OSMD';
                 var width = document.body.clientWidth;
                 canvas.width = width;
                 try {
-                osmdObj.render();
+                openSheetMusicDisplay.render();
                 } catch (e) {}
                 enable();
             }
@@ -113,28 +119,28 @@ import { OSMD } from '../src/OSMD/OSMD';
         window.addEventListener("keydown", function(e) {
             var event = window.event ? window.event : e;
             if (event.keyCode === 39) {
-                osmdObj.cursor.next();
+                openSheetMusicDisplay.cursor.next();
             }
         });
         nextCursorBtn.addEventListener("click", function() {
-            osmdObj.cursor.next();
+            openSheetMusicDisplay.cursor.next();
         });
         resetCursorBtn.addEventListener("click", function() {
-            osmdObj.cursor.reset();
+            openSheetMusicDisplay.cursor.reset();
         });
         hideCursorBtn.addEventListener("click", function() {
-            osmdObj.cursor.hide();
+            openSheetMusicDisplay.cursor.hide();
         });
         showCursorBtn.addEventListener("click", function() {
-            osmdObj.cursor.show();
+            openSheetMusicDisplay.cursor.show();
         });
 
         backendSelect.addEventListener("change", function(e) {
             var value = e.target.value;
             // clears the canvas element
             canvas.innerHTML = "";
-            osmdObj = new opensheetmusicdisplay.OSMD(canvas, false, value);
-            osmdObj.setLogLevel('info');
+            openSheetMusicDisplay = new OpenSheetMusicDisplay(canvas, false, value);
+            openSheetMusicDisplay.setLogLevel('info');
             selectOnChange();
 
         });
@@ -176,9 +182,9 @@ import { OSMD } from '../src/OSMD/OSMD';
             str = folder + select.value;
         }
         zoom = 1.0;
-        osmdObj.load(str).then(
+        openSheetMusicDisplay.load(str).then(
             function() {
-                return osmdObj.render();
+                return openSheetMusicDisplay.render();
             },
             function(e) {
                 error("Error reading sheet: " + e);
@@ -187,7 +193,7 @@ import { OSMD } from '../src/OSMD/OSMD';
             function() {
                 return onLoadingEnd(isCustom);
             }, function(e) {
-                error("Error rendering sheet: " + e);
+                error("Error rendering sheet: " + process.env.DEBUG ? e.stack : e);
                 onLoadingEnd(isCustom);
             }
         );
@@ -203,15 +209,15 @@ import { OSMD } from '../src/OSMD/OSMD';
     }
 
     function logCanvasSize() {
-        size.innerHTML = canvas.offsetWidth;
-        zoomDiv.innerHTML = Math.floor(zoom * 100.0);
+        size.innerHTML = canvas.offsetWidth + "px";
+        zoomDiv.innerHTML = Math.floor(zoom * 100.0) + "%";
     }
 
     function scale() {
         disable();
         window.setTimeout(function(){
-            osmdObj.zoom = zoom;
-            osmdObj.render();
+            openSheetMusicDisplay.zoom = zoom;
+            openSheetMusicDisplay.render();
             enable();
         }, 0);
     }

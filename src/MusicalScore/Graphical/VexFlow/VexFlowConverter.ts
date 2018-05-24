@@ -14,8 +14,10 @@ import {GraphicalNote} from "../GraphicalNote";
 import {SystemLinesEnum} from "../SystemLinesEnum";
 import {FontStyles} from "../../../Common/Enums/FontStyles";
 import {Fonts} from "../../../Common/Enums/Fonts";
-import {OutlineAndFillStyleEnum} from "../DrawingEnums";
+import {OutlineAndFillStyleEnum, OUTLINE_AND_FILL_STYLE_DICT} from "../DrawingEnums";
 import {Logging} from "../../../Common/Logging";
+import { ArticulationEnum, StemDirectionType } from "../../VoiceData/VoiceEntry";
+import { SystemLinePosition } from "../SystemLinePosition";
 
 /**
  * Helper class, which contains static methods which actually convert
@@ -45,7 +47,7 @@ export class VexFlowConverter {
      * @returns {string}
      */
     public static duration(fraction: Fraction, isTuplet: boolean): string {
-      let dur: number = fraction.RealValue;
+      const dur: number = fraction.RealValue;
 
       if (dur >= 1) {
           return "w";
@@ -100,10 +102,10 @@ export class VexFlowConverter {
      * @returns {string[]}
      */
     public static pitch(pitch: Pitch, clef: ClefInstruction): [string, string, ClefInstruction] {
-        let fund: string = NoteEnum[pitch.FundamentalNote].toLowerCase();
+        const fund: string = NoteEnum[pitch.FundamentalNote].toLowerCase();
         // The octave seems to need a shift of three FIXME?
-        let octave: number = pitch.Octave - clef.OctaveOffset + 3;
-        let acc: string = VexFlowConverter.accidental(pitch.Accidental);
+        const octave: number = pitch.Octave - clef.OctaveOffset + 3;
+        const acc: string = VexFlowConverter.accidental(pitch.Accidental);
         return [fund + "n/" + octave, acc, clef];
     }
 
@@ -142,14 +144,14 @@ export class VexFlowConverter {
      */
     public static StaveNote(notes: GraphicalNote[]): Vex.Flow.StaveNote {
         let keys: string[] = [];
-        let accidentals: string[] = [];
-        let frac: Fraction = notes[0].graphicalNoteLength;
-        let isTuplet: boolean = notes[0].sourceNote.NoteTuplet !== undefined;
+        const accidentals: string[] = [];
+        const frac: Fraction = notes[0].graphicalNoteLength;
+        const isTuplet: boolean = notes[0].sourceNote.NoteTuplet !== undefined;
         let duration: string = VexFlowConverter.duration(frac, isTuplet);
         let vfClefType: string = undefined;
         let numDots: number = 0;
-        for (let note of notes) {
-            let pitch: [string, string, ClefInstruction] = (note as VexFlowGraphicalNote).vfpitch;
+        for (const note of notes) {
+            const pitch: [string, string, ClefInstruction] = (note as VexFlowGraphicalNote).vfpitch;
             if (pitch === undefined) { // if it is a rest:
               keys = ["b/4"];
               duration += "r";
@@ -158,7 +160,7 @@ export class VexFlowConverter {
             keys.push(pitch[0]);
             accidentals.push(pitch[1]);
             if (!vfClefType) {
-                let vfClef: {type: string, annotation: string} = VexFlowConverter.Clef(pitch[2]);
+                const vfClef: {type: string, annotation: string} = VexFlowConverter.Clef(pitch[2]);
                 vfClefType = vfClef.type;
             }
             if (numDots < note.numberOfDots) {
@@ -169,12 +171,23 @@ export class VexFlowConverter {
             duration += "d";
         }
 
-        let vfnote: Vex.Flow.StaveNote = new Vex.Flow.StaveNote({
+        const vfnote: Vex.Flow.StaveNote = new Vex.Flow.StaveNote({
             auto_stem: true,
             clef: vfClefType,
             duration: duration,
             keys: keys,
         });
+        const wantedStemDirection: StemDirectionType = notes[0].sourceNote.ParentVoiceEntry.StemDirection;
+        switch (wantedStemDirection) {
+            case(StemDirectionType.Up):
+                vfnote.setStemDirection(Vex.Flow.Stem.UP);
+                break;
+            case (StemDirectionType.Down):
+                vfnote.setStemDirection(Vex.Flow.Stem.DOWN);
+                break;
+            default:
+                break;
+        }
 
         for (let i: number = 0, len: number = notes.length; i < len; i += 1) {
             (notes[i] as VexFlowGraphicalNote).setIndex(vfnote, i);
@@ -185,8 +198,76 @@ export class VexFlowConverter {
         for (let i: number = 0, len: number = numDots; i < len; ++i) {
             vfnote.addDotToAll();
         }
-
         return vfnote;
+    }
+
+    public static generateArticulations(vfnote: Vex.Flow.StaveNote, articulations: ArticulationEnum[]): void {
+        // Articulations:
+        let vfArtPosition: number = Vex.Flow.Modifier.Position.ABOVE;
+
+        if (vfnote.getStemDirection() === Vex.Flow.Stem.UP) {
+            vfArtPosition = Vex.Flow.Modifier.Position.BELOW;
+        }
+
+        for (const articulation of articulations) {
+            // tslint:disable-next-line:switch-default
+            let vfArt: Vex.Flow.Articulation = undefined;
+            switch (articulation) {
+                case ArticulationEnum.accent: {
+                    vfArt = new Vex.Flow.Articulation("a>");
+                    break;
+                }
+                case ArticulationEnum.downbow: {
+                    vfArt = new Vex.Flow.Articulation("am");
+                    break;
+                }
+                case ArticulationEnum.fermata: {
+                    vfArt = new Vex.Flow.Articulation("a@a");
+                    vfArtPosition = Vex.Flow.Modifier.Position.ABOVE;
+                    break;
+                }
+                case ArticulationEnum.invertedfermata: {
+                    vfArt = new Vex.Flow.Articulation("a@u");
+                    vfArtPosition = Vex.Flow.Modifier.Position.BELOW;
+                    break;
+                }
+                case ArticulationEnum.lefthandpizzicato: {
+                    vfArt = new Vex.Flow.Articulation("a+");
+                    break;
+                }
+                case ArticulationEnum.snappizzicato: {
+                    vfArt = new Vex.Flow.Articulation("ao");
+                    break;
+                }
+                case ArticulationEnum.staccatissimo: {
+                    vfArt = new Vex.Flow.Articulation("av");
+                    break;
+                }
+                case ArticulationEnum.staccato: {
+                    vfArt = new Vex.Flow.Articulation("a.");
+                    break;
+                }
+                case ArticulationEnum.tenuto: {
+                    vfArt = new Vex.Flow.Articulation("a-");
+                    break;
+                }
+                case ArticulationEnum.upbow: {
+                    vfArt = new Vex.Flow.Articulation("a|");
+                    break;
+                }
+                case ArticulationEnum.strongaccent: {
+                    vfArt = new Vex.Flow.Articulation("a^");
+                    break;
+                }
+                default: {
+                    break;
+                }
+            }
+            if (vfArt !== undefined) {
+                vfArt.setPosition(vfArtPosition);
+                vfnote.addModifier(0, vfArt);
+            }
+        }
     }
 
     /**
@@ -345,21 +426,23 @@ export class VexFlowConverter {
      * @param lineType
      * @returns {any}
      */
-    public static line(lineType: SystemLinesEnum): any {
-        // TODO Not all line types are correctly mapped!
+    public static line(lineType: SystemLinesEnum, linePosition: SystemLinePosition): any {
         switch (lineType) {
             case SystemLinesEnum.SingleThin:
-                return Vex.Flow.StaveConnector.type.SINGLE;
+                if (linePosition === SystemLinePosition.MeasureBegin) {
+                    return Vex.Flow.StaveConnector.type.SINGLE;
+                }
+                return Vex.Flow.StaveConnector.type.SINGLE_RIGHT;
             case SystemLinesEnum.DoubleThin:
                 return Vex.Flow.StaveConnector.type.DOUBLE;
             case SystemLinesEnum.ThinBold:
-                return Vex.Flow.StaveConnector.type.SINGLE;
+                return Vex.Flow.StaveConnector.type.BOLD_DOUBLE_RIGHT;
             case SystemLinesEnum.BoldThinDots:
-                return Vex.Flow.StaveConnector.type.DOUBLE;
+                return Vex.Flow.StaveConnector.type.BOLD_DOUBLE_LEFT;
             case SystemLinesEnum.DotsThinBold:
-                return Vex.Flow.StaveConnector.type.DOUBLE;
+                return Vex.Flow.StaveConnector.type.BOLD_DOUBLE_RIGHT;
             case SystemLinesEnum.DotsBoldBoldDots:
-                return Vex.Flow.StaveConnector.type.DOUBLE;
+                return Vex.Flow.StaveConnector.type.BOLD_DOUBLE_RIGHT;
             case SystemLinesEnum.None:
                 return Vex.Flow.StaveConnector.type.NONE;
             default:
@@ -376,7 +459,7 @@ export class VexFlowConverter {
     public static font(fontSize: number, fontStyle: FontStyles = FontStyles.Regular, font: Fonts = Fonts.TimesNewRoman): string {
         let style: string = "normal";
         let weight: string = "normal";
-        let family: string = "'Times New Roman'";
+        const family: string = "'Times New Roman'";
 
         switch (fontStyle) {
             case FontStyles.Bold:
@@ -430,7 +513,33 @@ export class VexFlowConverter {
      * @returns {string}
      */
     public static style(styleId: OutlineAndFillStyleEnum): string {
-        // TODO To be implemented
-        return "lightgreen";
+        const ret: string = OUTLINE_AND_FILL_STYLE_DICT.getValue(styleId);
+        return ret;
     }
 }
+
+export enum VexFlowRepetitionType {
+    NONE = 1,         // no coda or segno
+    CODA_LEFT = 2,    // coda at beginning of stave
+    CODA_RIGHT = 3,   // coda at end of stave
+    SEGNO_LEFT = 4,   // segno at beginning of stave
+    SEGNO_RIGHT = 5,  // segno at end of stave
+    DC = 6,           // D.C. at end of stave
+    DC_AL_CODA = 7,   // D.C. al coda at end of stave
+    DC_AL_FINE = 8,   // D.C. al Fine end of stave
+    DS = 9,           // D.S. at end of stave
+    DS_AL_CODA = 10,  // D.S. al coda at end of stave
+    DS_AL_FINE = 11,  // D.S. al Fine at end of stave
+    FINE = 12,        // Fine at end of stave
+}
+
+export enum VexFlowBarlineType {
+    SINGLE = 1,
+    DOUBLE = 2,
+    END = 3,
+    REPEAT_BEGIN = 4,
+    REPEAT_END = 5,
+    REPEAT_BOTH = 6,
+    NONE = 7,
+}
+
