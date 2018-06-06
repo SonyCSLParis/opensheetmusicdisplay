@@ -56,8 +56,8 @@ export class OpenSheetMusicDisplay {
     public cursor: Cursor;
     public zoom: number = 1.0;
 
-    private container: HTMLElement;
-    private canvas: HTMLElement;
+    public container: HTMLElement;
+    public canvas: HTMLElement;
     private backend: VexFlowBackend;
     private sheet: MusicSheet;
     private drawer: VexFlowMusicSheetDrawer;
@@ -68,6 +68,9 @@ export class OpenSheetMusicDisplay {
     }
     public get musicSheet(): MusicSheet {
         return this.sheet;
+    }
+    public get renderingBackend(): VexFlowBackend {
+        return this.backend;
     }
 
 
@@ -284,3 +287,6 @@ export class OpenSheetMusicDisplay {
 }
 
 export { VexFlowMeasure } from "./../MusicalScore/Graphical/VexFlow/VexFlowMeasure";
+export { Fraction } from "./../Common/DataObjects/Fraction";
+export { StaffMeasure } from "./../MusicalScore/Graphical/StaffMeasure";
+export { SourceMeasure } from "./../MusicalScore/VoiceData/SourceMeasure";
