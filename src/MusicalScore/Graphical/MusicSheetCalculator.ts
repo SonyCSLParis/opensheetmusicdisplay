@@ -386,7 +386,7 @@ export abstract class MusicSheetCalculator {
             graphicalLabel.PositionAndShape.RelativePosition = new PointF2D(relativeX, relativeY);
             // FIXME: Change if Skyline is available
             // skyBottomLineCalculator.updateSkyLineInRange(staffLine, start, end, relativeY + graphicalLabel.PositionAndShape.BorderMarginTop);
-            musicSystem.MeasureNumberLabels.push(graphicalLabel);
+            // musicSystem.MeasureNumberLabels.push(graphicalLabel);
         }
 
     /**
