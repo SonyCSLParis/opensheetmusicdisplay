@@ -4,7 +4,7 @@ import {BoundingBox} from "./BoundingBox";
 import {Fraction} from "../../Common/DataObjects/Fraction";
 import {SourceMeasure} from "../VoiceData/SourceMeasure";
 import {InstrumentalGroup} from "../InstrumentalGroup";
-import {TextAlignment} from "../../Common/Enums/TextAlignment";
+// import {TextAlignment} from "../../Common/Enums/TextAlignment";
 import {GraphicalMusicPage} from "./GraphicalMusicPage";
 import {GraphicalLabel} from "./GraphicalLabel";
 import {StaffMeasure} from "./StaffMeasure";
@@ -274,31 +274,31 @@ export abstract class MusicSystem extends GraphicalObject {
      * @param labelMarginBorderFactor
      */
     public createMusicSystemLabel(instrumentLabelTextHeight: number, systemLabelsRightMargin: number, labelMarginBorderFactor: number): void {
-        if (this.parent === this.parent.Parent.MusicPages[0] && this === this.parent.MusicSystems[0]) {
-            const instruments: Instrument[] = this.parent.Parent.ParentMusicSheet.getVisibleInstruments();
-            for (let idx: number = 0, len: number = instruments.length; idx < len; ++idx) {
-                const instrument: Instrument = instruments[idx];
-                const graphicalLabel: GraphicalLabel = new GraphicalLabel(
-                    instrument.NameLabel, instrumentLabelTextHeight, TextAlignment.LeftCenter, this.boundingBox
-                );
-                graphicalLabel.setLabelPositionAndShapeBorders();
-                this.labels.setValue(graphicalLabel, instrument);
-                // X-Position will be 0 (Label starts at the same PointF_2D with MusicSystem)
-                // Y-Position will be calculated after the y-Spacing
-                // graphicalLabel.PositionAndShape.RelativePosition = new PointF2D(0.0, 0.0);
-            }
-
+        // if (this.parent === this.parent.Parent.MusicPages[0] && this === this.parent.MusicSystems[0]) {
+        //     const instruments: Instrument[] = this.parent.Parent.ParentMusicSheet.getVisibleInstruments();
+        //     for (let idx: number = 0, len: number = instruments.length; idx < len; ++idx) {
+        //         const instrument: Instrument = instruments[idx];
+        //         const graphicalLabel: GraphicalLabel = new GraphicalLabel(
+        //             instrument.NameLabel, instrumentLabelTextHeight, TextAlignment.LeftCenter, this.boundingBox
+        //         );
+        //         graphicalLabel.setLabelPositionAndShapeBorders();
+        //         this.labels.setValue(graphicalLabel, instrument);
+        //         // X-Position will be 0 (Label starts at the same PointF_2D with MusicSystem)
+        //         // Y-Position will be calculated after the y-Spacing
+        //         // graphicalLabel.PositionAndShape.RelativePosition = new PointF2D(0.0, 0.0);
+        //     }
+        //
             // calculate maxLabelLength (needed for X-Spacing)
             this.maxLabelLength = 0.0;
-            const labels: GraphicalLabel[] = this.labels.keys();
-            for (let idx: number = 0, len: number = labels.length; idx < len; ++idx) {
-                const label: GraphicalLabel = labels[idx];
-                if (label.PositionAndShape.Size.width > this.maxLabelLength) {
-                    this.maxLabelLength = label.PositionAndShape.Size.width;
-                }
-            }
+            // const labels: GraphicalLabel[] = this.labels.keys();
+            // for (let idx: number = 0, len: number = labels.length; idx < len; ++idx) {
+            //     const label: GraphicalLabel = labels[idx];
+            //     if (label.PositionAndShape.Size.width > this.maxLabelLength) {
+            //         this.maxLabelLength = label.PositionAndShape.Size.width;
+            //     }
+            // }
             this.updateMusicSystemStaffLineXPosition(systemLabelsRightMargin);
-        }
+        // }
     }
 
     /**
