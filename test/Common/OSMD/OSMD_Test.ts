@@ -2,7 +2,6 @@ import chai = require("chai");
 import {OpenSheetMusicDisplay} from "../../../src/OpenSheetMusicDisplay/OpenSheetMusicDisplay";
 import {TestUtils} from "../../Util/TestUtils";
 
-
 describe("OpenSheetMusicDisplay Main Export", () => {
     let container1: HTMLElement;
 
@@ -14,7 +13,7 @@ describe("OpenSheetMusicDisplay Main Export", () => {
     });
 
     it("container", (done: MochaDone) => {
-        const div: HTMLElement = document.createElement("div");
+        const div: HTMLElement = TestUtils.getDivElement(document);
         chai.expect(() => {
             return new OpenSheetMusicDisplay(div);
         }).to.not.throw(Error);
@@ -22,9 +21,9 @@ describe("OpenSheetMusicDisplay Main Export", () => {
     });
 
     it("load MXL from string", (done: MochaDone) => {
-        const mxl: string = TestUtils.getMXL("MozartTrio.mxl");
-        const div: HTMLElement = document.createElement("div");
-        const opensheetmusicdisplay: OpenSheetMusicDisplay = new OpenSheetMusicDisplay(div);
+        const mxl: string = TestUtils.getMXL("Mozart_Clarinet_Quintet_Excerpt.mxl");
+        const div: HTMLElement = TestUtils.getDivElement(document);
+        const opensheetmusicdisplay: OpenSheetMusicDisplay = TestUtils.createOpenSheetMusicDisplay(div);
         opensheetmusicdisplay.load(mxl).then(
             (_: {}) => {
                 opensheetmusicdisplay.render();
@@ -36,8 +35,8 @@ describe("OpenSheetMusicDisplay Main Export", () => {
 
     it("load invalid MXL from string", (done: MochaDone) => {
         const mxl: string = "\x50\x4b\x03\x04";
-        const div: HTMLElement = document.createElement("div");
-        const opensheetmusicdisplay: OpenSheetMusicDisplay = new OpenSheetMusicDisplay(div);
+        const div: HTMLElement = TestUtils.getDivElement(document);
+        const opensheetmusicdisplay: OpenSheetMusicDisplay = TestUtils.createOpenSheetMusicDisplay(div);
         opensheetmusicdisplay.load(mxl).then(
             (_: {}) => {
                 done(new Error("Corrupted MXL appears to be loaded correctly"));
@@ -55,8 +54,8 @@ describe("OpenSheetMusicDisplay Main Export", () => {
     it("load XML string", (done: MochaDone) => {
         const score: Document = TestUtils.getScore("MuzioClementi_SonatinaOpus36No1_Part1.xml");
         const xml: string = new XMLSerializer().serializeToString(score);
-        const div: HTMLElement = document.createElement("div");
-        const opensheetmusicdisplay: OpenSheetMusicDisplay = new OpenSheetMusicDisplay(div);
+        const div: HTMLElement = TestUtils.getDivElement(document);
+        const opensheetmusicdisplay: OpenSheetMusicDisplay = TestUtils.createOpenSheetMusicDisplay(div);
         opensheetmusicdisplay.load(xml).then(
             (_: {}) => {
                 opensheetmusicdisplay.render();
@@ -68,8 +67,8 @@ describe("OpenSheetMusicDisplay Main Export", () => {
 
     it("load XML Document", (done: MochaDone) => {
         const score: Document = TestUtils.getScore("MuzioClementi_SonatinaOpus36No1_Part1.xml");
-        const div: HTMLElement = document.createElement("div");
-        const opensheetmusicdisplay: OpenSheetMusicDisplay = new OpenSheetMusicDisplay(div);
+        const div: HTMLElement = TestUtils.getDivElement(document);
+        const opensheetmusicdisplay: OpenSheetMusicDisplay = TestUtils.createOpenSheetMusicDisplay(div);
         opensheetmusicdisplay.load(score).then(
             (_: {}) => {
                 opensheetmusicdisplay.render();
@@ -80,9 +79,9 @@ describe("OpenSheetMusicDisplay Main Export", () => {
     });
 
     it("load MXL Document by URL", (done: MochaDone) => {
-        const url: string = "base/test/data/MozartTrio.mxl";
-        const div: HTMLElement = document.createElement("div");
-        const opensheetmusicdisplay: OpenSheetMusicDisplay = new OpenSheetMusicDisplay(div);
+        const url: string = "base/test/data/Mozart_Clarinet_Quintet_Excerpt.mxl";
+        const div: HTMLElement = TestUtils.getDivElement(document);
+        const opensheetmusicdisplay: OpenSheetMusicDisplay = TestUtils.createOpenSheetMusicDisplay(div);
         opensheetmusicdisplay.load(url).then(
             (_: {}) => {
                 opensheetmusicdisplay.render();
@@ -92,10 +91,28 @@ describe("OpenSheetMusicDisplay Main Export", () => {
         );
     });
 
-    it("load MXL Document by invalid URL", (done: MochaDone) => {
+    it("load something invalid by URL", (done: MochaDone) => {
         const url: string = "https://www.google.com";
-        const div: HTMLElement = document.createElement("div");
-        const opensheetmusicdisplay: OpenSheetMusicDisplay = new OpenSheetMusicDisplay(div);
+        const div: HTMLElement = TestUtils.getDivElement(document);
+        const opensheetmusicdisplay: OpenSheetMusicDisplay = TestUtils.createOpenSheetMusicDisplay(div);
+        opensheetmusicdisplay.load(url).then(
+            (_: {}) => {
+                done(new Error("Invalid URL appears to be loaded correctly"));
+            },
+            (exc: Error) => {
+                if (exc.message.toLowerCase().match(/opensheetmusicdisplay.*invalid/)) {
+                    done();
+                } else {
+                    done(new Error("Unexpected error: " + exc.message));
+                }
+            }
+        );
+    }).timeout(5000);
+
+    it("load invalid URL", (done: MochaDone) => {
+        const url: string = "https://www.afjkhfjkauu2ui3z2uiu.com";
+        const div: HTMLElement = TestUtils.getDivElement(document);
+        const opensheetmusicdisplay: OpenSheetMusicDisplay = TestUtils.createOpenSheetMusicDisplay(div);
         opensheetmusicdisplay.load(url).then(
             (_: {}) => {
                 done(new Error("Invalid URL appears to be loaded correctly"));
@@ -112,8 +129,8 @@ describe("OpenSheetMusicDisplay Main Export", () => {
 
     it("load invalid XML string", (done: MochaDone) => {
         const xml: string = "<?xml";
-        const div: HTMLElement = document.createElement("div");
-        const opensheetmusicdisplay: OpenSheetMusicDisplay = new OpenSheetMusicDisplay(div);
+        const div: HTMLElement = TestUtils.getDivElement(document);
+        const opensheetmusicdisplay: OpenSheetMusicDisplay = TestUtils.createOpenSheetMusicDisplay(div);
         opensheetmusicdisplay.load(xml).then(
             (_: {}) => {
                 done(new Error("Corrupted XML appears to be loaded correctly"));
@@ -129,8 +146,8 @@ describe("OpenSheetMusicDisplay Main Export", () => {
     });
 
     it("render without loading", (done: MochaDone) => {
-        const div: HTMLElement = document.createElement("div");
-        const opensheetmusicdisplay: OpenSheetMusicDisplay = new OpenSheetMusicDisplay(div);
+        const div: HTMLElement = TestUtils.getDivElement(document);
+        const opensheetmusicdisplay: OpenSheetMusicDisplay = TestUtils.createOpenSheetMusicDisplay(div);
         chai.expect(() => {
             return opensheetmusicdisplay.render();
         }).to.throw(/load/);
@@ -139,8 +156,7 @@ describe("OpenSheetMusicDisplay Main Export", () => {
 
     before((): void => {
         // Create the container for the "test width" test
-        container1 = document.createElement("div");
-        document.body.appendChild(container1);
+        container1 = TestUtils.getDivElement(document);
     });
     after((): void => {
         // Destroy the container for the "test width" test
@@ -150,7 +166,7 @@ describe("OpenSheetMusicDisplay Main Export", () => {
     it("test width 500", (done: MochaDone) => {
         const div: HTMLElement = container1;
         div.style.width = "500px";
-        const opensheetmusicdisplay: OpenSheetMusicDisplay = new OpenSheetMusicDisplay(div);
+        const opensheetmusicdisplay: OpenSheetMusicDisplay = TestUtils.createOpenSheetMusicDisplay(div);
         const score: Document = TestUtils.getScore("MuzioClementi_SonatinaOpus36No1_Part1.xml");
         opensheetmusicdisplay.load(score).then(
             (_: {}) => {
@@ -165,7 +181,7 @@ describe("OpenSheetMusicDisplay Main Export", () => {
     it("test width 200", (done: MochaDone) => {
         const div: HTMLElement = container1;
         div.style.width = "200px";
-        const opensheetmusicdisplay: OpenSheetMusicDisplay = new OpenSheetMusicDisplay(div);
+        const opensheetmusicdisplay: OpenSheetMusicDisplay = TestUtils.createOpenSheetMusicDisplay(div);
         const score: Document = TestUtils.getScore("MuzioClementi_SonatinaOpus36No1_Part1.xml");
         opensheetmusicdisplay.load(score).then(
             (_: {}) => {
