@@ -402,5 +402,5 @@ export class OpenSheetMusicDisplay {
 
 export { VexFlowMeasure } from "./../MusicalScore/Graphical/VexFlow/VexFlowMeasure";
 export { Fraction } from "./../Common/DataObjects/Fraction";
-export { StaffMeasure } from "./../MusicalScore/Graphical/StaffMeasure";
+export { GraphicalMeasure } from "./../MusicalScore/Graphical/GraphicalMeasure";
 export { SourceMeasure } from "./../MusicalScore/VoiceData/SourceMeasure";
