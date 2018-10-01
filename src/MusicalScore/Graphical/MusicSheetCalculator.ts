@@ -296,10 +296,10 @@ export abstract class MusicSheetCalculator {
                 const upperBottomLine: number = musicSystem.StaffLines[i].SkyBottomLineCalculator.getBottomLineMax();
                 // TODO: Lower skyline should add to offset when there are items above the line. Currently no test
                 // file available
-                // const lowerSkyLine: number = Math.min(...musicSystem.StaffLines[i + 1].SkyLine);
-                if (Math.abs(upperBottomLine) > this.rules.MinimumStaffLineDistance) {
+                const lowerSkyLine: number = Math.min(...musicSystem.StaffLines[i + 1].SkyLine);
+                if (Math.abs(lowerSkyLine - upperBottomLine) < this.rules.MinimumStaffLineDistance) {
                     // Remove staffheight from offset. As it results in huge distances
-                    const offset: number = Math.abs(upperBottomLine) + this.rules.MinimumStaffLineDistance - this.rules.StaffHeight;
+                    const offset: number = Math.abs(lowerSkyLine - upperBottomLine) + this.rules.MinimumStaffLineDistance - this.rules.StaffHeight;
                     this.updateStaffLinesRelativePosition(musicSystem, i + 1, offset);
                 }
             }
@@ -773,7 +773,9 @@ export abstract class MusicSheetCalculator {
         }
 
         // Y-spacing
+        console.log("Before YLayout");
         this.calculateSystemYLayout();
+        console.log("After YLayout");
         // calculate Comments for each Staffline
         this.calculateComments();
         // calculate marked Areas for Systems
