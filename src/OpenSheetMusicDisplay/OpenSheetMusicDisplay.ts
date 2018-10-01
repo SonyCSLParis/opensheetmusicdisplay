@@ -306,8 +306,8 @@ export class OpenSheetMusicDisplay {
             window.addEventListener("resize", resizeStart);
         }
 
-        // window.setTimeout(startCallback, 0);
-        // window.setTimeout(endCallback, 1);
+        window.setTimeout(startCallback, 0);
+        window.setTimeout(endCallback, 1);
     }
 
     /** Enable or disable (hide) the cursor.
