@@ -290,15 +290,15 @@ export abstract class MusicSystem extends GraphicalObject {
 
             // calculate maxLabelLength (needed for X-Spacing)
             this.maxLabelLength = 0.0;
-            // const labels: GraphicalLabel[] = this.labels.keys();
-            // for (let idx: number = 0, len: number = labels.length; idx < len; ++idx) {
-            //     const label: GraphicalLabel = labels[idx];
-            //     if (label.PositionAndShape.Size.width > this.maxLabelLength) {
-            //         this.maxLabelLength = label.PositionAndShape.Size.width;
-            //     }
-            // }
+            const labels: GraphicalLabel[] = this.labels.keys();
+            for (let idx: number = 0, len: number = labels.length; idx < len; ++idx) {
+                const label: GraphicalLabel = labels[idx];
+                if (label.PositionAndShape.Size.width > this.maxLabelLength) {
+                    this.maxLabelLength = label.PositionAndShape.Size.width;
+                }
+            }
             this.updateMusicSystemStaffLineXPosition(systemLabelsRightMargin);
-        // }
+        }
     }
 
     /**
