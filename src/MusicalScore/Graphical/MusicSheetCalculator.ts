@@ -773,9 +773,7 @@ export abstract class MusicSheetCalculator {
         }
 
         // Y-spacing
-        console.log("Before YLayout");
         this.calculateSystemYLayout();
-        console.log("After YLayout");
         // calculate Comments for each Staffline
         this.calculateComments();
         // calculate marked Areas for Systems
