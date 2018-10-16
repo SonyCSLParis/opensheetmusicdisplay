@@ -15,6 +15,8 @@ import { AJAX } from "./AJAX";
 import * as log from "loglevel";
 import {DrawingParametersEnum, DrawingParameters} from "../MusicalScore/Graphical/DrawingParameters";
 import {IOSMDOptions, OSMDOptions} from "./OSMDOptions";
+import {EngravingRules} from "../MusicalScore/Graphical/EngravingRules";
+import {AbstractExpression} from "../MusicalScore/VoiceData/Expressions/AbstractExpression";
 
 /**
  * The main class and control point of OpenSheetMusicDisplay.<br>
@@ -45,25 +47,7 @@ export class OpenSheetMusicDisplay {
             throw new Error("Please pass a valid div container to OpenSheetMusicDisplay");
         }
 
-        if (options.backend === undefined || options.backend.toLowerCase() === "svg") {
-            this.backend = new SvgVexFlowBackend();
-        } else {
-            this.backend = new CanvasVexFlowBackend();
-        }
-
-        this.setDrawingParameters(options);
-
-        this.backend.initialize(this.container);
-        this.canvas = this.backend.getCanvas();
-        this.innerElement = this.backend.getInnerElement();
-        this.enableOrDisableCursor(this.drawingParameters.drawCursors);
-
-        // Create the drawer
-        this.drawer = new VexFlowMusicSheetDrawer(this.canvas, this.backend, this.drawingParameters);
-
-        if (options.autoResize) {
-            this.autoResize();
-        }
+        this.setOptions(options);
     }
 
     public cursor: Cursor;
@@ -154,7 +138,7 @@ export class OpenSheetMusicDisplay {
             return Promise.reject(new Error("given music sheet was incomplete or could not be loaded."));
         }
         this.graphic = new GraphicalMusicSheet(this.sheet, calc);
-        if (this.drawingParameters.drawCursors) {
+        if (this.drawingParameters.drawCursors && this.cursor) {
             this.cursor.init(this.sheet.MusicPartManager, this.graphic);
         }
         log.info(`Loaded sheet ${this.sheet.TitleString} successfully.`);
@@ -189,7 +173,7 @@ export class OpenSheetMusicDisplay {
         this.drawer.scale(this.zoom);
         // Finally, draw
         this.drawer.drawSheet(this.graphic);
-        if (this.drawingParameters.drawCursors) {
+        if (this.drawingParameters.drawCursors && this.cursor) {
             // Update the cursor position
             this.cursor.update();
         }
@@ -229,7 +213,7 @@ export class OpenSheetMusicDisplay {
      * FIXME: Probably unnecessary
      */
     private reset(): void {
-        if (this.drawingParameters.drawCursors) {
+        if (this.drawingParameters.drawCursors && this.cursor) {
             this.cursor.hide();
         }
         this.sheet = undefined;
@@ -260,7 +244,7 @@ export class OpenSheetMusicDisplay {
                 //    document.documentElement.offsetWidth
                 //);
                 //self.container.style.width = width + "px";
-                if (this.graphic !== undefined) {
+                if (self.graphic !== undefined) {
                     self.render();
                 }
             }
@@ -273,9 +257,6 @@ export class OpenSheetMusicDisplay {
      * @param endCallback is the function called when resizing (kind-of) ends
      */
     private handleResize(startCallback: () => void, endCallback: () => void): void {
-        if (this.graphic === undefined) {
-            return;
-        }
         let rtime: number;
         let timeout: number = undefined;
         const delta: number = 200;
@@ -334,24 +315,54 @@ export class OpenSheetMusicDisplay {
     }
 
     //#region GETTER / SETTER
-    private setDrawingParameters(options: IOSMDOptions): void {
+    public setOptions(options: IOSMDOptions): void {
         this.drawingParameters = new DrawingParameters();
         if (options.drawingParameters) {
             this.drawingParameters.DrawingParametersEnum =
                 (<any>DrawingParametersEnum)[options.drawingParameters.toLowerCase()];
         }
+
+        const updateExistingBackend: boolean = this.backend !== undefined;
+        if (options.backend !== undefined || this.backend === undefined) {
+            if (updateExistingBackend) {
+                // TODO doesn't work yet, still need to create a new OSMD object
+
+                this.drawer.clear();
+
+                // musicSheetCalculator.clearSystemsAndMeasures() // maybe? don't have reference though
+                // musicSheetCalculator.clearRecreatedObjects();
+            }
+            if (options.backend === undefined || options.backend.toLowerCase() === "svg") {
+                this.backend = new SvgVexFlowBackend();
+            } else {
+                this.backend = new CanvasVexFlowBackend();
+            }
+            this.backend.initialize(this.container);
+            this.canvas = this.backend.getCanvas();
+            this.innerElement = this.backend.getInnerElement();
+            this.enableOrDisableCursor(this.drawingParameters.drawCursors);
+            // Create the drawer
+            this.drawer = new VexFlowMusicSheetDrawer(this.canvas, this.backend, this.drawingParameters);
+        }
+
         // individual drawing parameters options
         if (options.disableCursor) {
             this.drawingParameters.drawCursors = false;
+            this.enableOrDisableCursor(this.drawingParameters.drawCursors);
         }
+        // alternative to if block: this.drawingsParameters.drawCursors = options.drawCursors !== false. No if, but always sets drawingParameters.
+        // note that every option can be undefined, which doesn't mean the option should be set to false.
         if (options.drawHiddenNotes) {
             this.drawingParameters.drawHiddenNotes = true;
         }
         if (options.drawTitle !== undefined) {
             this.drawingParameters.DrawTitle = options.drawTitle;
+            // TODO these settings are duplicate in drawingParameters and EngravingRules. Maybe we only need them in EngravingRules.
+            // this sets the parameter in DrawingParameters, which in turn sets the parameter in EngravingRules.
+            // see tuplets settings below for the immediate approach
         }
-        if (options.drawPartNames !== undefined) {
-            this.drawingParameters.DrawPartNames = options.drawPartNames;
+        if (options.drawSubtitle !== undefined) {
+            this.drawingParameters.DrawSubtitle = options.drawSubtitle;
         }
         if (options.drawLyricist !== undefined) {
             this.drawingParameters.DrawLyricist = options.drawLyricist;
@@ -359,11 +370,46 @@ export class OpenSheetMusicDisplay {
         if (options.drawCredits !== undefined) {
             this.drawingParameters.drawCredits = options.drawCredits;
         }
+        if (options.drawPartNames !== undefined) {
+            this.drawingParameters.DrawPartNames = options.drawPartNames;
+        }
+        if (options.drawFingerings === false) {
+            EngravingRules.Rules.RenderFingerings = false;
+        }
+        if (options.fingeringPosition !== undefined) {
+            EngravingRules.Rules.FingeringPosition = AbstractExpression.PlacementEnumFromString(options.fingeringPosition);
+        }
+        if (options.fingeringInsideStafflines !== undefined) {
+            EngravingRules.Rules.FingeringInsideStafflines = options.fingeringInsideStafflines;
+        }
+        if (options.setWantedStemDirectionByXml !== undefined) {
+            EngravingRules.Rules.SetWantedStemDirectionByXml = options.setWantedStemDirectionByXml;
+        }
         if (options.defaultColorNoteHead) {
             this.drawingParameters.defaultColorNoteHead = options.defaultColorNoteHead;
         }
         if (options.defaultColorStem) {
             this.drawingParameters.defaultColorStem = options.defaultColorStem;
+        }
+        if (options.tupletsRatioed) {
+            EngravingRules.Rules.TupletsRatioed = true;
+        }
+        if (options.tupletsBracketed) {
+            EngravingRules.Rules.TupletsBracketed = true;
+        }
+        if (options.tripletsBracketed) {
+            EngravingRules.Rules.TripletsBracketed = true;
+        }
+        if (options.autoResize) {
+            this.autoResize();
+        } else if (options.autoResize === false) { // not undefined
+            this.handleResize(
+                () => {
+                    // empty
+                },
+                () => {
+                    // empty
+            });
         }
     }
 

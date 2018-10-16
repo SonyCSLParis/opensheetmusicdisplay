@@ -28,6 +28,7 @@ import { OpenSheetMusicDisplay } from '../src/OpenSheetMusicDisplay/OpenSheetMus
         "OSMD Function Test - Ornaments": "OSMD_function_test_Ornaments.xml",
         "OSMD Function Test - Accidentals": "OSMD_function_test_accidentals.musicxml",
         "OSMD Function Test - Expressions": "OSMD_function_test_expressions.musicxml",
+        "OSMD Function Test - Expressions Overlap": "OSMD_function_test_expressions_overlap.musicxml",
         "OSMD Function Test - NoteHeadShapes": "OSMD_function_test_noteHeadShapes.musicxml",
         "OSMD Function Test - Drumset": "OSMD_function_test_drumset.musicxml",
         "Schubert, F. - An Die Musik": "Schubert_An_die_Musik.xml",
@@ -128,10 +129,19 @@ import { OpenSheetMusicDisplay } from '../src/OpenSheetMusicDisplay/OpenSheetMus
         openSheetMusicDisplay = new OpenSheetMusicDisplay(canvas, {
             autoResize: true,
             backend: backendSelect.value,
-            drawingParameters: "default", // try compact (instead of default)
             disableCursor: false,
+            drawingParameters: "default", // try compact (instead of default)
             drawPartNames: true, // try false
-            // drawTitle: true,
+            // drawTitle: false,
+            // drawSubtitle: false,
+            drawFingerings: true,
+            fingeringPosition: "auto", // left is default. try right. experimental: auto, above, below.
+            // fingeringInsideStafflines: "true", // default: false. true draws fingerings directly above/below notes
+            setWantedStemDirectionByXml: true, // try false, which was previously the default behavior
+
+            // tupletsBracketed: true, // creates brackets for all tuplets except triplets, even when not set by xml
+            // tripletsBracketed: true,
+            // tupletsRatioed: true, // unconventional; renders ratios for tuplets (3:2 instead of 3 for triplets)
         });
         openSheetMusicDisplay.setLogLevel('info');
         document.body.appendChild(canvas);
@@ -186,10 +196,18 @@ import { OpenSheetMusicDisplay } from '../src/OpenSheetMusicDisplay/OpenSheetMus
 
         backendSelect.addEventListener("change", function(e) {
             var value = e.target.value;
-            // clears the canvas element
-            canvas.innerHTML = "";
-            openSheetMusicDisplay = new OpenSheetMusicDisplay(canvas, false, value);
-            openSheetMusicDisplay.setLogLevel('info');
+            var createNewOsmd = true;
+
+            if (createNewOsmd) {
+                // clears the canvas element
+                canvas.innerHTML = "";
+                openSheetMusicDisplay = new OpenSheetMusicDisplay(canvas, {backend: value});
+                openSheetMusicDisplay.setLogLevel('info');
+            } else {
+                // alternative, doesn't work yet, see setOptions():
+                openSheetMusicDisplay.setOptions({backend: value});
+            }
+
             selectSampleOnChange();
 
         });

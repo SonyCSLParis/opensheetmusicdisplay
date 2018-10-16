@@ -1,7 +1,8 @@
-import {PagePlacementEnum} from "./GraphicalMusicPage";
+import { PagePlacementEnum } from "./GraphicalMusicPage";
 //import {MusicSymbol} from "./MusicSymbol";
 import * as log from "loglevel";
 import { TextAlignmentEnum } from "../../Common/Enums/TextAlignment";
+import { PlacementEnum } from "../VoiceData/Expressions/AbstractExpression";
 
 export class EngravingRules {
     private static rules: EngravingRules;
@@ -59,6 +60,7 @@ export class EngravingRules {
     private stemMaxLength: number;
     private beamSlopeMaxAngle: number;
     private stemMinAllowedDistanceBetweenNoteHeadAndBeamLine: number;
+    private setWantedStemDirectionByXml: boolean;
     private graceNoteScalingFactor: number;
     private graceNoteXOffset: number;
     private wedgeOpeningLength: number;
@@ -81,6 +83,18 @@ export class EngravingRules {
     private fingeringLabelFontHeight: number;
     private measureNumberLabelHeight: number;
     private measureNumberLabelOffset: number;
+    /** Whether tuplets should display ratio (3:2 instead of 3 for triplet). Default false. */
+    private tupletsRatioed: boolean;
+    /** Whether all tuplets should be bracketed (e.g. |--5--| instead of 5). Default false.
+     * If false, only tuplets given as bracketed in XML (bracket="yes") will be bracketed.
+     * (If not given in XML, bracketing is implementation-dependent according to standard)
+     */
+    private tupletsBracketed: boolean;
+    /** Whether all triplets should be bracketed. Overrides tupletsBracketed for triplets.
+     * If false, only triplets given as bracketed in XML (bracket="yes") will be bracketed.
+     * (Bracketing all triplets can be cluttering)
+     */
+    private tripletsBracketed: boolean;
     private tupletNumberLabelHeight: number;
     private tupletNumberYOffset: number;
     private labelMarginBorderFactor: number;
@@ -153,6 +167,11 @@ export class EngravingRules {
     private renderSubtitle: boolean;
     private renderLyricist: boolean;
     private renderInstrumentNames: boolean;
+    private renderFingerings: boolean;
+    private dynamicExpressionMaxDistance: number;
+    private dynamicExpressionSpacer: number;
+    private fingeringPosition: PlacementEnum;
+    private fingeringInsideStafflines: boolean;
 
     constructor() {
         // global variables
@@ -223,6 +242,7 @@ export class EngravingRules {
         this.stemMaxLength = 4.5;
         this.beamSlopeMaxAngle = 10.0;
         this.stemMinAllowedDistanceBetweenNoteHeadAndBeamLine = 1.0;
+        this.setWantedStemDirectionByXml = true;
 
         // GraceNote Variables
         this.graceNoteScalingFactor = 0.6;
@@ -251,15 +271,18 @@ export class EngravingRules {
         this.chordSymbolTextHeight = 2.0;
         this.fingeringLabelFontHeight = 1.7;
 
-        // MeasureNumber- and TupletNumberLabel variables
+        // Tuplets, MeasureNumber and TupletNumber Labels
         this.measureNumberLabelHeight = 1.5 * EngravingRules.unit;
         this.measureNumberLabelOffset = 2;
+        this.tupletsRatioed = false;
+        this.tupletsBracketed = false;
+        this.tripletsBracketed = false; // special setting for triplets, overrides tuplet setting (for triplets only)
         this.tupletNumberLabelHeight = 1.5 * EngravingRules.unit;
         this.tupletNumberYOffset = 0.5;
         this.labelMarginBorderFactor = 0.1;
         this.tupletVerticalLineLength = 0.5;
 
-        // MeasureNumber- and TupletNumberLabel variables
+        // Slur and Tie variables
         this.bezierCurveStepSize = 1000;
         this.calculateCurveParametersArrays();
         this.tieGhostObjectWidth = 0.75;
@@ -276,7 +299,7 @@ export class EngravingRules {
         this.slurTangentMaxAngle = 80.0;
         this.slursStartingAtSameStaffEntryYOffset = 0.8;
 
-        // MeasureNumber- and TupletNumberLabel variables
+        // Repetitions
         this.repetitionEndingLabelHeight = 2.0;
         this.repetitionEndingLabelXOffset = 0.5;
         this.repetitionEndingLabelYOffset = 0.3;
@@ -300,6 +323,8 @@ export class EngravingRules {
         this.moodTextHeight = 2.3;
         this.unknownTextHeight = 2.0;
         this.continuousTempoTextHeight = 2.3;
+        this.dynamicExpressionMaxDistance = 2;
+        this.dynamicExpressionSpacer = 0.5;
 
         // Line Widths
         this.staffLineWidth = 0.12;
@@ -334,6 +359,9 @@ export class EngravingRules {
         this.renderSubtitle = true;
         this.renderLyricist = true;
         this.renderInstrumentNames = true;
+        this.renderFingerings = true;
+        this.fingeringPosition = PlacementEnum.Left; // easier to get bounding box, and safer for vertical layout
+        this.fingeringInsideStafflines = false;
 
         this.populateDictionaries();
         try {
@@ -666,6 +694,12 @@ export class EngravingRules {
     public set StemMinAllowedDistanceBetweenNoteHeadAndBeamLine(value: number) {
         this.stemMinAllowedDistanceBetweenNoteHeadAndBeamLine = value;
     }
+    public get SetWantedStemDirectionByXml(): boolean {
+        return this.setWantedStemDirectionByXml;
+    }
+    public set SetWantedStemDirectionByXml(value: boolean) {
+        this.setWantedStemDirectionByXml = value;
+    }
     public get GraceNoteScalingFactor(): number {
         return this.graceNoteScalingFactor;
     }
@@ -791,6 +825,24 @@ export class EngravingRules {
     }
     public set MeasureNumberLabelOffset(value: number) {
         this.measureNumberLabelOffset = value;
+    }
+    public get TupletsRatioed(): boolean {
+        return this.tupletsRatioed;
+    }
+    public set TupletsRatioed(value: boolean) {
+        this.tupletsRatioed = value;
+    }
+    public get TupletsBracketed(): boolean {
+        return this.tupletsBracketed;
+    }
+    public set TupletsBracketed(value: boolean) {
+        this.tupletsBracketed = value;
+    }
+    public get TripletsBracketed(): boolean {
+        return this.tripletsBracketed;
+    }
+    public set TripletsBracketed(value: boolean) {
+        this.tripletsBracketed = value;
     }
     public get TupletNumberLabelHeight(): number {
         return this.tupletNumberLabelHeight;
@@ -1032,6 +1084,21 @@ export class EngravingRules {
     public set ContinuousTempoTextHeight(value: number) {
         this.continuousTempoTextHeight = value;
     }
+    /** Distance of expressions inside a group */
+    public get DynamicExpressionMaxDistance(): number {
+        return this.dynamicExpressionMaxDistance;
+    }
+    public set DynamicExpressionMaxDistance(value: number) {
+        this.dynamicExpressionMaxDistance = value;
+    }
+    /** Space between expressions in a group */
+    public get DynamicExpressionSpacer(): number {
+        return this.dynamicExpressionSpacer;
+    }
+    public set DynamicExpressionSpacer(value: number) {
+        this.dynamicExpressionSpacer = value;
+    }
+
     public get UnknownTextHeight(): number {
         return this.unknownTextHeight;
     }
@@ -1217,6 +1284,24 @@ export class EngravingRules {
     }
     public set RenderInstrumentNames(value: boolean) {
         this.renderInstrumentNames = value;
+    }
+    public get RenderFingerings(): boolean {
+        return this.renderFingerings;
+    }
+    public set RenderFingerings(value: boolean) {
+        this.renderFingerings = value;
+    }
+    public get FingeringPosition(): PlacementEnum {
+        return this.fingeringPosition;
+    }
+    public set FingeringPosition(value: PlacementEnum) {
+        this.fingeringPosition = value;
+    }
+    public get FingeringInsideStafflines(): boolean {
+        return this.fingeringInsideStafflines;
+    }
+    public set FingeringInsideStafflines(value: boolean) {
+        this.fingeringInsideStafflines = value;
     }
 
     /**
