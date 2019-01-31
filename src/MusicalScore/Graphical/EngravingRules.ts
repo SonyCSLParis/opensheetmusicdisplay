@@ -1,6 +1,8 @@
-import {PagePlacementEnum} from "./GraphicalMusicPage";
+import { PagePlacementEnum } from "./GraphicalMusicPage";
 //import {MusicSymbol} from "./MusicSymbol";
 import * as log from "loglevel";
+import { TextAlignmentEnum } from "../../Common/Enums/TextAlignment";
+import { PlacementEnum } from "../VoiceData/Expressions/AbstractExpression";
 
 export class EngravingRules {
     private static rules: EngravingRules;
@@ -12,9 +14,11 @@ export class EngravingRules {
     private sheetMinimumDistanceBetweenTitleAndSubtitle: number;
     private sheetComposerHeight: number;
     private sheetAuthorHeight: number;
+    private compactMode: boolean;
     private pagePlacementEnum: PagePlacementEnum;
     private pageHeight: number;
     private pageTopMargin: number;
+    private pageTopMarginNarrow: number;
     private pageBottomMargin: number;
     private pageLeftMargin: number;
     private pageRightMargin: number;
@@ -56,6 +60,7 @@ export class EngravingRules {
     private stemMaxLength: number;
     private beamSlopeMaxAngle: number;
     private stemMinAllowedDistanceBetweenNoteHeadAndBeamLine: number;
+    private setWantedStemDirectionByXml: boolean;
     private graceNoteScalingFactor: number;
     private graceNoteXOffset: number;
     private wedgeOpeningLength: number;
@@ -68,7 +73,7 @@ export class EngravingRules {
     private distanceOffsetBetweenTwoHorizontallyCrossedWedges: number;
     private wedgeMinLength: number;
     private distanceBetweenAdjacentDynamics: number;
-    private tempoChangeMeasureValitidy: number;
+    private tempoChangeMeasureValidity: number;
     private tempoContinousFactor: number;
     private staccatoScalingFactor: number;
     private betweenDotsDistance: number;
@@ -78,6 +83,18 @@ export class EngravingRules {
     private fingeringLabelFontHeight: number;
     private measureNumberLabelHeight: number;
     private measureNumberLabelOffset: number;
+    /** Whether tuplets should display ratio (3:2 instead of 3 for triplet). Default false. */
+    private tupletsRatioed: boolean;
+    /** Whether all tuplets should be bracketed (e.g. |--5--| instead of 5). Default false.
+     * If false, only tuplets given as bracketed in XML (bracket="yes") will be bracketed.
+     * (If not given in XML, bracketing is implementation-dependent according to standard)
+     */
+    private tupletsBracketed: boolean;
+    /** Whether all triplets should be bracketed. Overrides tupletsBracketed for triplets.
+     * If false, only triplets given as bracketed in XML (bracket="yes") will be bracketed.
+     * (Bracketing all triplets can be cluttering)
+     */
+    private tripletsBracketed: boolean;
     private tupletNumberLabelHeight: number;
     private tupletNumberYOffset: number;
     private labelMarginBorderFactor: number;
@@ -87,9 +104,14 @@ export class EngravingRules {
     private repetitionEndingLabelYOffset: number;
     private repetitionEndingLineYLowerOffset: number;
     private repetitionEndingLineYUpperOffset: number;
+    private lyricsAlignmentStandard: TextAlignmentEnum;
     private lyricsHeight: number;
+    private lyricsYOffsetToStaffHeight: number;
     private verticalBetweenLyricsDistance: number;
-    private betweenSyllabelMaximumDistance: number;
+    private horizontalBetweenLyricsDistance: number;
+    private betweenSyllableMaximumDistance: number;
+    private betweenSyllableMinimumDistance: number;
+    private lyricOverlapAllowedIntoNextMeasure: number;
     private minimumDistanceBetweenDashes: number;
     private bezierCurveStepSize: number;
     private tPower3: number[];
@@ -109,7 +131,7 @@ export class EngravingRules {
     private slurTangentMinAngle: number;
     private slurTangentMaxAngle: number;
     private slursStartingAtSameStaffEntryYOffset: number;
-    private instantaniousTempoTextHeight: number;
+    private instantaneousTempoTextHeight: number;
     private continuousDynamicTextHeight: number;
     private moodTextHeight: number;
     private unknownTextHeight: number;
@@ -134,11 +156,22 @@ export class EngravingRules {
     private minNoteDistance: number;
     private subMeasureXSpacingThreshold: number;
     private measureDynamicsMaxScalingFactor: number;
+    private wholeRestXShiftVexflow: number;
     private maxInstructionsConstValue: number;
     private noteDistances: number[] = [1.0, 1.0, 1.3, 1.6, 2.0, 2.5, 3.0, 4.0];
     private noteDistancesScalingFactors: number[] = [1.0, 2.0, 4.0, 8.0, 16.0, 32.0, 64.0, 128.0];
     private durationDistanceDict: {[_: number]: number; } = {};
     private durationScalingDistanceDict: {[_: number]: number; } = {};
+    private renderComposer: boolean;
+    private renderTitle: boolean;
+    private renderSubtitle: boolean;
+    private renderLyricist: boolean;
+    private renderInstrumentNames: boolean;
+    private renderFingerings: boolean;
+    private dynamicExpressionMaxDistance: number;
+    private dynamicExpressionSpacer: number;
+    private fingeringPosition: PlacementEnum;
+    private fingeringInsideStafflines: boolean;
 
     constructor() {
         // global variables
@@ -152,9 +185,11 @@ export class EngravingRules {
         this.sheetAuthorHeight = 2.0;
 
         // Staff sizing Variables
+        this.compactMode = false;
         this.pagePlacementEnum = PagePlacementEnum.Down;
         this.pageHeight = 100001.0;
         this.pageTopMargin = 5.0;
+        this.pageTopMarginNarrow = 0.0; // for compact mode
         this.pageBottomMargin = 5.0;
         this.pageLeftMargin = 5.0;
         this.pageRightMargin = 5.0;
@@ -207,12 +242,13 @@ export class EngravingRules {
         this.stemMaxLength = 4.5;
         this.beamSlopeMaxAngle = 10.0;
         this.stemMinAllowedDistanceBetweenNoteHeadAndBeamLine = 1.0;
+        this.setWantedStemDirectionByXml = true;
 
         // GraceNote Variables
         this.graceNoteScalingFactor = 0.6;
         this.graceNoteXOffset = 0.2;
 
-        // GraceNote Variables
+        // Wedge Variables
         this.wedgeOpeningLength = 1.2;
         this.wedgeMeasureEndOpeningLength = 0.75;
         this.wedgeMeasureBeginOpeningLength = 0.75;
@@ -224,8 +260,8 @@ export class EngravingRules {
         this.wedgeMinLength = 2.0;
         this.distanceBetweenAdjacentDynamics = 0.75;
 
-        // GraceNote Variables
-        this.tempoChangeMeasureValitidy = 4;
+        // Tempo Variables
+        this.tempoChangeMeasureValidity = 4;
         this.tempoContinousFactor = 0.7;
 
         // various
@@ -235,15 +271,18 @@ export class EngravingRules {
         this.chordSymbolTextHeight = 2.0;
         this.fingeringLabelFontHeight = 1.7;
 
-        // MeasureNumber- and TupletNumberLabel variables
+        // Tuplets, MeasureNumber and TupletNumber Labels
         this.measureNumberLabelHeight = 1.5 * EngravingRules.unit;
         this.measureNumberLabelOffset = 2;
+        this.tupletsRatioed = false;
+        this.tupletsBracketed = false;
+        this.tripletsBracketed = false; // special setting for triplets, overrides tuplet setting (for triplets only)
         this.tupletNumberLabelHeight = 1.5 * EngravingRules.unit;
         this.tupletNumberYOffset = 0.5;
         this.labelMarginBorderFactor = 0.1;
         this.tupletVerticalLineLength = 0.5;
 
-        // MeasureNumber- and TupletNumberLabel variables
+        // Slur and Tie variables
         this.bezierCurveStepSize = 1000;
         this.calculateCurveParametersArrays();
         this.tieGhostObjectWidth = 0.75;
@@ -260,7 +299,7 @@ export class EngravingRules {
         this.slurTangentMaxAngle = 80.0;
         this.slursStartingAtSameStaffEntryYOffset = 0.8;
 
-        // MeasureNumber- and TupletNumberLabel variables
+        // Repetitions
         this.repetitionEndingLabelHeight = 2.0;
         this.repetitionEndingLabelXOffset = 0.5;
         this.repetitionEndingLabelYOffset = 0.3;
@@ -268,17 +307,24 @@ export class EngravingRules {
         this.repetitionEndingLineYUpperOffset = 0.3;
 
         // Lyrics
-        this.lyricsHeight = 2.0;
+        this.lyricsAlignmentStandard = TextAlignmentEnum.LeftBottom; // CenterBottom and LeftBottom tested, spacing-optimized
+        this.lyricsHeight = 2.0; // actually size of lyrics
+        this.lyricsYOffsetToStaffHeight = 3.0; // distance between lyrics and staff. could partly be even lower/dynamic
         this.verticalBetweenLyricsDistance = 0.5;
-        this.betweenSyllabelMaximumDistance = 10.0;
-        this.minimumDistanceBetweenDashes = 5.0;
+        this.horizontalBetweenLyricsDistance = 0.2;
+        this.betweenSyllableMaximumDistance = 10.0;
+        this.betweenSyllableMinimumDistance = 0.5; // + 1.0 for CenterAlignment added in lyrics spacing
+        this.lyricOverlapAllowedIntoNextMeasure = 3.4; // optimal for dashed last lyric, see Land der Berge
+        this.minimumDistanceBetweenDashes = 10;
 
         // expressions variables
-        this.instantaniousTempoTextHeight = 2.3;
+        this.instantaneousTempoTextHeight = 2.3;
         this.continuousDynamicTextHeight = 2.3;
         this.moodTextHeight = 2.3;
         this.unknownTextHeight = 2.0;
         this.continuousTempoTextHeight = 2.3;
+        this.dynamicExpressionMaxDistance = 2;
+        this.dynamicExpressionSpacer = 0.5;
 
         // Line Widths
         this.staffLineWidth = 0.12;
@@ -305,6 +351,17 @@ export class EngravingRules {
         this.minNoteDistance = 2.0;
         this.subMeasureXSpacingThreshold = 35;
         this.measureDynamicsMaxScalingFactor = 2.5;
+        this.wholeRestXShiftVexflow = -2.5; // VexFlow draws rest notes too far to the right
+
+        // Render options (whether to render specific or invisible elements)
+        this.renderComposer = true;
+        this.renderTitle = true;
+        this.renderSubtitle = true;
+        this.renderLyricist = true;
+        this.renderInstrumentNames = true;
+        this.renderFingerings = true;
+        this.fingeringPosition = PlacementEnum.Left; // easier to get bounding box, and safer for vertical layout
+        this.fingeringInsideStafflines = false;
 
         this.populateDictionaries();
         try {
@@ -361,6 +418,12 @@ export class EngravingRules {
     public set PagePlacement(value: PagePlacementEnum) {
         this.pagePlacementEnum = value;
     }
+    public get CompactMode(): boolean {
+        return this.compactMode;
+    }
+    public set CompactMode(value: boolean) {
+        this.compactMode = value;
+    }
     public get PageHeight(): number {
         return this.pageHeight;
     }
@@ -372,6 +435,12 @@ export class EngravingRules {
     }
     public set PageTopMargin(value: number) {
         this.pageTopMargin = value;
+    }
+    public get PageTopMarginNarrow(): number {
+        return this.pageTopMarginNarrow;
+    }
+    public set PageTopMarginNarrow(value: number) {
+        this.pageTopMarginNarrow = value;
     }
     public get PageBottomMargin(): number {
         return this.pageBottomMargin;
@@ -625,6 +694,12 @@ export class EngravingRules {
     public set StemMinAllowedDistanceBetweenNoteHeadAndBeamLine(value: number) {
         this.stemMinAllowedDistanceBetweenNoteHeadAndBeamLine = value;
     }
+    public get SetWantedStemDirectionByXml(): boolean {
+        return this.setWantedStemDirectionByXml;
+    }
+    public set SetWantedStemDirectionByXml(value: boolean) {
+        this.setWantedStemDirectionByXml = value;
+    }
     public get GraceNoteScalingFactor(): number {
         return this.graceNoteScalingFactor;
     }
@@ -697,11 +772,11 @@ export class EngravingRules {
     public set DistanceBetweenAdjacentDynamics(value: number) {
         this.distanceBetweenAdjacentDynamics = value;
     }
-    public get TempoChangeMeasureValitidy(): number {
-        return this.tempoChangeMeasureValitidy;
+    public get TempoChangeMeasureValidity(): number {
+        return this.tempoChangeMeasureValidity;
     }
-    public set TempoChangeMeasureValitidy(value: number) {
-        this.tempoChangeMeasureValitidy = value;
+    public set TempoChangeMeasureValidity(value: number) {
+        this.tempoChangeMeasureValidity = value;
     }
     public get TempoContinousFactor(): number {
         return this.tempoContinousFactor;
@@ -750,6 +825,24 @@ export class EngravingRules {
     }
     public set MeasureNumberLabelOffset(value: number) {
         this.measureNumberLabelOffset = value;
+    }
+    public get TupletsRatioed(): boolean {
+        return this.tupletsRatioed;
+    }
+    public set TupletsRatioed(value: boolean) {
+        this.tupletsRatioed = value;
+    }
+    public get TupletsBracketed(): boolean {
+        return this.tupletsBracketed;
+    }
+    public set TupletsBracketed(value: boolean) {
+        this.tupletsBracketed = value;
+    }
+    public get TripletsBracketed(): boolean {
+        return this.tripletsBracketed;
+    }
+    public set TripletsBracketed(value: boolean) {
+        this.tripletsBracketed = value;
     }
     public get TupletNumberLabelHeight(): number {
         return this.tupletNumberLabelHeight;
@@ -805,11 +898,23 @@ export class EngravingRules {
     public set RepetitionEndingLineYUpperOffset(value: number) {
         this.repetitionEndingLineYUpperOffset = value;
     }
+    public get LyricsAlignmentStandard(): TextAlignmentEnum {
+        return this.lyricsAlignmentStandard;
+    }
+    public set LyricsAlignmentStandard(value: TextAlignmentEnum) {
+        this.lyricsAlignmentStandard = value;
+    }
     public get LyricsHeight(): number {
         return this.lyricsHeight;
     }
     public set LyricsHeight(value: number) {
         this.lyricsHeight = value;
+    }
+    public get LyricsYOffsetToStaffHeight(): number {
+        return this.lyricsYOffsetToStaffHeight;
+    }
+    public set LyricsYOffsetToStaffHeight(value: number) {
+        this.lyricsYOffsetToStaffHeight = value;
     }
     public get VerticalBetweenLyricsDistance(): number {
         return this.verticalBetweenLyricsDistance;
@@ -817,11 +922,29 @@ export class EngravingRules {
     public set VerticalBetweenLyricsDistance(value: number) {
         this.verticalBetweenLyricsDistance = value;
     }
-    public get BetweenSyllabelMaximumDistance(): number {
-        return this.betweenSyllabelMaximumDistance;
+    public get HorizontalBetweenLyricsDistance(): number {
+        return this.horizontalBetweenLyricsDistance;
     }
-    public set BetweenSyllabelMaximumDistance(value: number) {
-        this.betweenSyllabelMaximumDistance = value;
+    public set HorizontalBetweenLyricsDistance(value: number) {
+        this.horizontalBetweenLyricsDistance = value;
+    }
+    public get BetweenSyllableMaximumDistance(): number {
+        return this.betweenSyllableMaximumDistance;
+    }
+    public set BetweenSyllableMaximumDistance(value: number) {
+        this.betweenSyllableMaximumDistance = value;
+    }
+    public get BetweenSyllableMinimumDistance(): number {
+        return this.betweenSyllableMinimumDistance;
+    }
+    public set BetweenSyllableMinimumDistance(value: number) {
+        this.betweenSyllableMinimumDistance = value;
+    }
+    public get LyricOverlapAllowedIntoNextMeasure(): number {
+        return this.lyricOverlapAllowedIntoNextMeasure;
+    }
+    public set LyricOverlapAllowedIntoNextMeasure(value: number) {
+        this.lyricOverlapAllowedIntoNextMeasure = value;
     }
     public get MinimumDistanceBetweenDashes(): number {
         return this.minimumDistanceBetweenDashes;
@@ -937,11 +1060,11 @@ export class EngravingRules {
     public set SlursStartingAtSameStaffEntryYOffset(value: number) {
         this.slursStartingAtSameStaffEntryYOffset = value;
     }
-    public get InstantaniousTempoTextHeight(): number {
-        return this.instantaniousTempoTextHeight;
+    public get InstantaneousTempoTextHeight(): number {
+        return this.instantaneousTempoTextHeight;
     }
-    public set InstantaniousTempoTextHeight(value: number) {
-        this.instantaniousTempoTextHeight = value;
+    public set InstantaneousTempoTextHeight(value: number) {
+        this.instantaneousTempoTextHeight = value;
     }
     public get ContinuousDynamicTextHeight(): number {
         return this.continuousDynamicTextHeight;
@@ -961,6 +1084,21 @@ export class EngravingRules {
     public set ContinuousTempoTextHeight(value: number) {
         this.continuousTempoTextHeight = value;
     }
+    /** Distance of expressions inside a group */
+    public get DynamicExpressionMaxDistance(): number {
+        return this.dynamicExpressionMaxDistance;
+    }
+    public set DynamicExpressionMaxDistance(value: number) {
+        this.dynamicExpressionMaxDistance = value;
+    }
+    /** Space between expressions in a group */
+    public get DynamicExpressionSpacer(): number {
+        return this.dynamicExpressionSpacer;
+    }
+    public set DynamicExpressionSpacer(value: number) {
+        this.dynamicExpressionSpacer = value;
+    }
+
     public get UnknownTextHeight(): number {
         return this.unknownTextHeight;
     }
@@ -1087,6 +1225,12 @@ export class EngravingRules {
     public set MeasureDynamicsMaxScalingFactor(value: number) {
         this.measureDynamicsMaxScalingFactor = value;
     }
+    public get WholeRestXShiftVexflow(): number {
+        return this.wholeRestXShiftVexflow;
+    }
+    public set WholeRestXShiftVexflow(value: number) {
+        this.wholeRestXShiftVexflow = value;
+    }
     public get MaxInstructionsConstValue(): number {
         return this.maxInstructionsConstValue;
     }
@@ -1110,6 +1254,54 @@ export class EngravingRules {
     }
     public get DurationScalingDistanceDict(): {[_: number]: number; } {
         return this.durationScalingDistanceDict;
+    }
+    public get RenderComposer(): boolean {
+        return this.renderComposer;
+    }
+    public set RenderComposer(value: boolean) {
+        this.renderComposer = value;
+    }
+    public get RenderTitle(): boolean {
+        return this.renderTitle;
+    }
+    public set RenderTitle(value: boolean) {
+        this.renderTitle = value;
+    }
+    public get RenderSubtitle(): boolean {
+        return this.renderSubtitle;
+    }
+    public set RenderSubtitle(value: boolean) {
+        this.renderSubtitle = value;
+    }
+    public get RenderLyricist(): boolean {
+        return this.renderLyricist;
+    }
+    public set RenderLyricist(value: boolean) {
+        this.renderLyricist = value;
+    }
+    public get RenderInstrumentNames(): boolean {
+        return this.renderInstrumentNames;
+    }
+    public set RenderInstrumentNames(value: boolean) {
+        this.renderInstrumentNames = value;
+    }
+    public get RenderFingerings(): boolean {
+        return this.renderFingerings;
+    }
+    public set RenderFingerings(value: boolean) {
+        this.renderFingerings = value;
+    }
+    public get FingeringPosition(): PlacementEnum {
+        return this.fingeringPosition;
+    }
+    public set FingeringPosition(value: PlacementEnum) {
+        this.fingeringPosition = value;
+    }
+    public get FingeringInsideStafflines(): boolean {
+        return this.fingeringInsideStafflines;
+    }
+    public set FingeringInsideStafflines(value: boolean) {
+        this.fingeringInsideStafflines = value;
     }
 
     /**

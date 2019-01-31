@@ -4,16 +4,17 @@ declare namespace Vex {
 
     export module Flow {
         const RESOLUTION: any;
+        const DEFAULT_NOTATION_FONT_SCALE: number;
 
         export class Formatter {
-            constructor(opts?: any);
+            constructor();
 
             public hasMinTotalWidth: boolean;
             public minTotalWidth: number;
 
             public joinVoices(voices: Voice[]): void;
 
-            public format(voices: Voice[], width: number): void;
+            public format(voices: Voice[], width: number, options?: any): void;
 
             public preCalculateMinTotalWidth(voices: Voice[]): number;
         }
@@ -23,13 +24,13 @@ declare namespace Vex {
 
             public mergeWith(bb: BoundingBox): BoundingBox;
 
-            public getX(): number;
+            public x: number;
 
-            public getY(): number;
+            public y: number;
 
-            public getW(): number;
+            public w: number;
 
-            public getH(): number;
+            public h: number;
 
             public draw(ctx: Vex.Flow.RenderContext): void;
         }
@@ -67,6 +68,24 @@ declare namespace Vex {
         }
 
         export class Note extends Tickable {
+            public addStroke(index: number, stroke: Stroke): void;
+        }
+
+        export class TextBracket {
+            constructor(note_struct: any);
+            
+            public setContext(ctx: RenderContext): TextBracket;
+
+            public draw(): void;
+
+        }
+
+        export class TextNote extends Note {
+            constructor(note_struct: any);
+            
+            public setContext(ctx: RenderContext): TextBracket;
+
+            public draw(): void;
         }
 
         export class Stem {
@@ -78,6 +97,8 @@ declare namespace Vex {
             public setStemDirection(direction: number): StemmableNote;
             public x_shift: number;
             public getAbsoluteX(): number;
+            public addModifier(index: number, modifier: Modifier): StemmableNote;
+            public preFormatted: boolean;
         }
 
         export class GhostNote extends StemmableNote {
@@ -105,6 +126,17 @@ declare namespace Vex {
             public setStyle(style: any): void;
 
             public addDotToAll(): void;
+        }
+
+        export class GraceNote extends StaveNote {
+            static SCALE: number;
+            static LEDGER_LINE_OFFSET: number;
+            constructor(note_struct: any);
+        }
+
+        export class GraceNoteGroup extends Modifier {
+            constructor(grace_notes: GraceNote[], show_slur: boolean);
+            public beamNotes(): GraceNoteGroup;
         }
 
         export class StaveTie {
@@ -171,6 +203,12 @@ declare namespace Vex {
             public draw(): void;
 
             public addTimeSignature(sig: string): void;
+
+            public setVoltaType(type: number, number_t: number, y: number): void;
+        }
+
+        export class Volta extends StaveModifier {
+            public static type: any;
         }
 
         export class Modifier {
@@ -185,21 +223,29 @@ declare namespace Vex {
             public getPosition(): number;
 
             public setPosition(position: number): Modifier;
+
+            public setIndex(index: number): void;
         }
 
+        export class FretHandFinger extends Modifier {
+            constructor(finger: string);
+        }
+
+        export class StringNumber extends Modifier {
+            constructor(string: string);
+            setOffsetY(value: number);
+        }
+        
+        export class Stroke extends Modifier {
+            constructor(type: number);
+            public static Type: any; // unreliable values, use Arpeggio.ArpeggioType instead
+        }
+
+        export class NoteSubGroup extends Modifier {
+            constructor(notes: Object);
+        }
 
         export class StaveModifier extends Modifier {
-            public static get Position() {
-                return {
-                    LEFT: 1,
-                    RIGHT: 2,
-                    ABOVE: 3,
-                    BELOW: 4,
-                    BEGIN: 5,
-                    END: 6,
-                };
-            }
-
             public getPosition(): number;
 
         }
@@ -209,7 +255,7 @@ declare namespace Vex {
         }
 
         export class Clef extends StaveModifier {
-            constructor(type: string, size: number, annotation: string);
+            constructor(type: string, size: string, annotation: string);
 
             public static category: string;
             public static types: { [type: string]: any; };
@@ -220,6 +266,12 @@ declare namespace Vex {
             public getBoundingBox(): BoundingBox;
 
             public setStave(stave: Stave): void;
+        }
+        
+        export class ClefNote  extends Note {
+            constructor(type: string, size: string, annotation: string);
+
+            public type: string;
         }
 
         export class Renderer {
@@ -256,6 +308,13 @@ declare namespace Vex {
             constructor(type: string);
         }
 
+        export class Ornament extends Modifier {
+            constructor(type: string);
+            setDelayed(delayed: boolean): void;
+            setUpperAccidental(acc: string): void;
+            setLowerAccidental(acc: string): void;
+        }
+        
         export class Beam {
             constructor(notes: StaveNote[], auto_stem: boolean);
 
@@ -272,13 +331,30 @@ declare namespace Vex {
             public draw(): void;
         }
 
+        // interface for class Curve to draw slurs. The options are set to undefined
+        export class Curve {
+            constructor(from: StemmableNote, to: StemmableNote, options: any);
+            
+            public setContext(ctx: RenderContext): Curve;
+
+            public draw(): void;
+        }
+
         export class RenderContext {
             public scale(x: number, y: number): RenderContext;
             public fillRect(x: number, y: number, width: number, height: number): RenderContext
             public fillText(text: string, x: number, y: number): RenderContext;
             public setFont(family: string, size: number, weight: string): RenderContext;
+            public beginPath(): RenderContext;
+            public moveTo(x, y): RenderContext;
+            public lineTo(x, y): RenderContext;
+            public bezierCurveTo(cp1_x: number, cp1_y: number, cp2_x: number, cp2_y: number, end_x: number, end_y: number): RenderContext;
+            public closePath(): RenderContext;
+            public stroke(): RenderContext;
+            public fill(): RenderContext;
             public save(): RenderContext;
             public restore(): RenderContext;
+            public lineWidth: number;
         }
 
         export class CanvasContext extends RenderContext {

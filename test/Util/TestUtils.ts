@@ -1,3 +1,5 @@
+import { OpenSheetMusicDisplay } from "../../src/OpenSheetMusicDisplay/OpenSheetMusicDisplay";
+
 /**
  * This class collects useful methods to interact with test data.
  * During tests, XML and MXL documents are preprocessed by karma,
@@ -15,6 +17,13 @@ export class TestUtils {
         return ((window as any).__raw__)[path];
     }
 
+    public static getDivElement(document: Document): HTMLElement {
+        const div: HTMLElement = document.createElement("div");
+        const body: HTMLElement = document.getElementsByTagName("body")[0];
+        body.appendChild(div);
+        return div;
+    }
+
     /**
      * Retrieve from a XML document the first element with name "score-partwise"
      * @param doc is the XML Document
@@ -30,4 +39,7 @@ export class TestUtils {
         }
     }
 
+    public static createOpenSheetMusicDisplay(div: HTMLElement): OpenSheetMusicDisplay {
+        return new OpenSheetMusicDisplay(div);
+    }
 }

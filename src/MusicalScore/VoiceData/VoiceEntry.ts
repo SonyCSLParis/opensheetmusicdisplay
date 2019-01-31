@@ -10,6 +10,7 @@ import {KeyInstruction} from "./Instructions/KeyInstruction";
 import {OrnamentEnum} from "./OrnamentContainer";
 import {AccidentalEnum} from "../../Common/DataObjects/Pitch";
 import Dictionary from "typescript-collections/dist/lib/Dictionary";
+import {Arpeggio} from "./Arpeggio";
 
 /**
  * A [[VoiceEntry]] contains the notes in a voice at a timestamp.
@@ -17,28 +18,41 @@ import Dictionary from "typescript-collections/dist/lib/Dictionary";
 export class VoiceEntry {
     /**
      *
-     * @param timestamp - The relative timestamp within the source measure.
+     * @param timestamp The relative timestamp within the source measure.
      * @param parentVoice
      * @param parentSourceStaffEntry
+     * @param isGrace States whether the VoiceEntry has (only) grace notes.
+     * @param graceNoteSlash States whether the grace note(s) have a slash (Acciaccatura, played before the beat)
      */
-    constructor(timestamp: Fraction, parentVoice: Voice, parentSourceStaffEntry: SourceStaffEntry) {
+    constructor(timestamp: Fraction, parentVoice: Voice, parentSourceStaffEntry: SourceStaffEntry,
+                isGrace: boolean = false, graceNoteSlash: boolean = false, graceSlur: boolean = false) {
         this.timestamp = timestamp;
         this.parentVoice = parentVoice;
         this.parentSourceStaffEntry = parentSourceStaffEntry;
+        this.isGrace = isGrace;
+        this.graceAfterMainNote = false;
+        this.graceNoteSlash = graceNoteSlash;
+        this.graceSlur = graceSlur;
     }
-
-    public graceVoiceEntriesBefore: VoiceEntry[];
-    public graceVoiceEntriesAfter: VoiceEntry[];
 
     private parentVoice: Voice;
     private parentSourceStaffEntry: SourceStaffEntry;
     private timestamp: Fraction;
     private notes: Note[] = [];
+    private isGrace: boolean;
+    /** States whether the grace notes come after a main note (at end of measure). */
+    private graceAfterMainNote: boolean;
+    private graceNoteSlash: boolean;
+    private graceSlur: boolean; // TODO grace slur system could be refined to be non-binary
     private articulations: ArticulationEnum[] = [];
     private technicalInstructions: TechnicalInstruction[] = [];
     private lyricsEntries: Dictionary<number, LyricsEntry> = new Dictionary<number, LyricsEntry>();
-    private arpeggiosNotesIndices: number[] = [];
+    /** The Arpeggio consisting of this VoiceEntry's notes. Undefined if no arpeggio exists. */
+    private arpeggio: Arpeggio;
     private ornamentContainer: OrnamentContainer;
+    private wantedStemDirection: StemDirectionType = StemDirectionType.Undefined;
+    /** Stem direction specified in the xml stem element. */
+    private wantedStemDirectionXml: StemDirectionType = StemDirectionType.Undefined;
     private stemDirection: StemDirectionType = StemDirectionType.Undefined;
 
     public get ParentSourceStaffEntry(): SourceStaffEntry {
@@ -56,6 +70,30 @@ export class VoiceEntry {
     public get Notes(): Note[] {
         return this.notes;
     }
+    public get IsGrace(): boolean {
+        return this.isGrace;
+    }
+    public set IsGrace(value: boolean) {
+        this.isGrace = value;
+    }
+    public get GraceAfterMainNote(): boolean {
+        return this.graceAfterMainNote;
+    }
+    public set GraceAfterMainNote(value: boolean) {
+        this.graceAfterMainNote = value;
+    }
+    public get GraceNoteSlash(): boolean {
+        return this.graceNoteSlash;
+    }
+    public set GraceNoteSlash(value: boolean) {
+        this.graceNoteSlash = value;
+    }
+    public get GraceSlur(): boolean {
+        return this.graceSlur;
+    }
+    public set GraceSlur(value: boolean) {
+        this.graceSlur = value;
+    }
     public get Articulations(): ArticulationEnum[] {
         return this.articulations;
     }
@@ -65,11 +103,11 @@ export class VoiceEntry {
     public get LyricsEntries(): Dictionary<number, LyricsEntry> {
         return this.lyricsEntries;
     }
-    public get ArpeggiosNotesIndices(): number[] {
-        return this.arpeggiosNotesIndices;
+    public get Arpeggio(): Arpeggio {
+        return this.arpeggio;
     }
-    public set ArpeggiosNotesIndices(value: number[]) {
-        this.arpeggiosNotesIndices = value;
+    public set Arpeggio(value: Arpeggio) {
+        this.arpeggio = value;
     }
     public get OrnamentContainer(): OrnamentContainer {
         return this.ornamentContainer;
@@ -78,11 +116,26 @@ export class VoiceEntry {
         this.ornamentContainer = value;
     }
 
-    public get StemDirection(): StemDirectionType {
-        return this.stemDirection;
+    // WantedStemDirection provides the stem direction to VexFlow in case of more than 1 voice
+    // for optimal graphical appearance
+    public set WantedStemDirection(value: StemDirectionType) {
+        this.wantedStemDirection = value;
     }
+    public get WantedStemDirection(): StemDirectionType {
+        return this.wantedStemDirection;
+    }
+    public set WantedStemDirectionXml(value: StemDirectionType) {
+        this.wantedStemDirectionXml = value;
+    }
+    public get WantedStemDirectionXml(): StemDirectionType {
+        return this.wantedStemDirectionXml;
+    }
+    // StemDirection holds the actual value of the stem
     public set StemDirection(value: StemDirectionType) {
         this.stemDirection = value;
+    }
+    public get StemDirection(): StemDirectionType {
+        return this.stemDirection;
     }
 
     public static isSupportedArticulation(articulation: ArticulationEnum): boolean {
@@ -170,7 +223,7 @@ export class VoiceEntry {
                 const higherPitch: Pitch = baseNote.Pitch.getTransposedPitch(1);
                 let alteration: AccidentalEnum = activeKey.getAlterationForPitch(higherPitch);
                 if (voiceEntryWithOrnament.OrnamentContainer.AccidentalAbove !== AccidentalEnum.NONE) {
-                    alteration = <AccidentalEnum><number>voiceEntryWithOrnament.ornamentContainer.AccidentalAbove;
+                    alteration = voiceEntryWithOrnament.ornamentContainer.AccidentalAbove;
                 }
                 for (let i: number = 0; i < 8; i++) {
                     currentTimestamp = Fraction.plus(baseTimestamp, new Fraction(i * length.Numerator, length.Denominator));
@@ -338,5 +391,6 @@ export enum StemDirectionType {
     Undefined = -1,
     Up = 0,
     Down = 1,
-    None = 2
+    None = 2,
+    Double = 3
 }

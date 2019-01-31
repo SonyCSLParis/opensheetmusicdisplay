@@ -1,5 +1,5 @@
 import Vex = require("vexflow");
-import {StaffMeasure} from "../StaffMeasure";
+import {GraphicalMeasure} from "../GraphicalMeasure";
 import {SourceMeasure} from "../../VoiceData/SourceMeasure";
 import {Staff} from "../../VoiceData/Staff";
 import {StaffLine} from "../StaffLine";
@@ -14,46 +14,54 @@ import {GraphicalNote} from "../GraphicalNote";
 import {GraphicalStaffEntry} from "../GraphicalStaffEntry";
 import StaveConnector = Vex.Flow.StaveConnector;
 import StaveNote = Vex.Flow.StaveNote;
+import StemmableNote = Vex.Flow.StemmableNote;
+import NoteSubGroup = Vex.Flow.NoteSubGroup;
 import * as log from "loglevel";
 import {unitInPixels} from "./VexFlowMusicSheetDrawer";
 import {Tuplet} from "../../VoiceData/Tuplet";
-import {RepetitionInstructionEnum} from "../../VoiceData/Instructions/RepetitionInstruction";
+import {RepetitionInstructionEnum, RepetitionInstruction, AlignmentType} from "../../VoiceData/Instructions/RepetitionInstruction";
 import {SystemLinePosition} from "../SystemLinePosition";
 import {StemDirectionType} from "../../VoiceData/VoiceEntry";
 import {GraphicalVoiceEntry} from "../GraphicalVoiceEntry";
 import {VexFlowVoiceEntry} from "./VexFlowVoiceEntry";
 import {Fraction} from "../../../Common/DataObjects/Fraction";
-import { Voice } from "../../VoiceData/Voice";
+import {Voice} from "../../VoiceData/Voice";
+import {LinkedVoice} from "../../VoiceData/LinkedVoice";
+import {EngravingRules} from "../EngravingRules";
+import {OrnamentContainer} from "../../VoiceData/OrnamentContainer";
+import {TechnicalInstruction} from "../../VoiceData/Instructions/TechnicalInstruction";
+import {PlacementEnum} from "../../VoiceData/Expressions/AbstractExpression";
+import {ArpeggioType} from "../../VoiceData/Arpeggio";
+import {VexFlowGraphicalNote} from "./VexFlowGraphicalNote";
 
-export class VexFlowMeasure extends StaffMeasure {
+export class VexFlowMeasure extends GraphicalMeasure {
     constructor(staff: Staff, staffLine: StaffLine = undefined, sourceMeasure: SourceMeasure = undefined) {
         super(staff, sourceMeasure, staffLine);
         this.minimumStaffEntriesWidth = -1;
         this.resetLayout();
     }
 
-    // octaveOffset according to active clef
+    /** octaveOffset according to active clef */
     public octaveOffset: number = 3;
-    // The VexFlow Voices in the measure
+    /** The VexFlow Voices in the measure */
     public vfVoices: { [voiceID: number]: Vex.Flow.Voice; } = {};
-    // Call this function (if present) to x-format all the voices in the measure
+    /** Call this function (if present) to x-format all the voices in the measure */
     public formatVoices: (width: number) => void;
-    // The VexFlow Ties in the measure
+    /** The VexFlow Ties in the measure */
     public vfTies: Vex.Flow.StaveTie[] = [];
-    // The repetition instructions given as words or symbols (coda, dal segno..)
+    /** The repetition instructions given as words or symbols (coda, dal segno..) */
     public vfRepetitionWords: Vex.Flow.Repetition[] = [];
-
-    // The VexFlow Stave (= one measure in a staffline)
+    /** The VexFlow Stave (= one measure in a staffline) */
     private stave: Vex.Flow.Stave;
-    // VexFlow StaveConnectors (vertical lines)
+    /** VexFlow StaveConnectors (vertical lines) */
     private connectors: Vex.Flow.StaveConnector[] = [];
-    // Intermediate object to construct beams
+    /** Intermediate object to construct beams */
     private beams: { [voiceID: number]: [Beam, VexFlowVoiceEntry[]][]; } = {};
-    // VexFlow Beams
+    /** VexFlow Beams */
     private vfbeams: { [voiceID: number]: Vex.Flow.Beam[]; };
-    // Intermediate object to construct tuplets
+    /** Intermediate object to construct tuplets */
     private tuplets: { [voiceID: number]: [Tuplet, VexFlowVoiceEntry[]][]; } = {};
-    // VexFlow Tuplets
+    /** VexFlow Tuplets */
     private vftuplets: { [voiceID: number]: Vex.Flow.Tuplet[]; } = {};
 
     // Sets the absolute coordinates of the VFStave on the canvas
@@ -203,7 +211,7 @@ export class VexFlowMeasure extends StaffMeasure {
      */
     public addMeasureNumber(): void {
         const text: string = this.MeasureNumber.toString();
-        const position: number = Vex.Flow.StaveModifier.Position.ABOVE;
+        const position: number = StavePositionEnum.ABOVE;  //Vex.Flow.StaveModifier.Position.ABOVE;
         const options: any = {
             justification: 1,
             shift_x: 0,
@@ -213,10 +221,10 @@ export class VexFlowMeasure extends StaffMeasure {
         this.stave.setText(text, position, options);
     }
 
-    public addWordRepetition(repetitionInstruction: RepetitionInstructionEnum): void {
+    public addWordRepetition(repetitionInstruction: RepetitionInstruction): void {
         let instruction: VexFlowRepetitionType = undefined;
         let position: any = Vex.Flow.Modifier.Position.END;
-        switch (repetitionInstruction) {
+        switch (repetitionInstruction.type) {
           case RepetitionInstructionEnum.Segno:
             // create Segno Symbol:
             instruction = VexFlowRepetitionType.SEGNO_LEFT;
@@ -256,6 +264,36 @@ export class VexFlowMeasure extends StaffMeasure {
         }
         if (instruction !== undefined) {
             this.stave.addModifier(new Vex.Flow.Repetition(instruction, 0, 0), position);
+            return;
+        }
+
+        this.addVolta(repetitionInstruction);
+    }
+
+    private addVolta(repetitionInstruction: RepetitionInstruction): void {
+        let voltaType: number = Vex.Flow.Volta.type.BEGIN;
+        if (repetitionInstruction.type === RepetitionInstructionEnum.Ending) {
+            switch (repetitionInstruction.alignment) {
+                case AlignmentType.Begin:
+                    if (this.parentSourceMeasure.endsRepetitionEnding()) {
+                        voltaType = Vex.Flow.Volta.type.BEGIN_END;
+                    } else {
+                        voltaType = Vex.Flow.Volta.type.BEGIN;
+                    }
+                    break;
+                case AlignmentType.End:
+                    if (this.parentSourceMeasure.beginsRepetitionEnding()) {
+                        //voltaType = Vex.Flow.Volta.type.BEGIN_END;
+                        // don't add BEGIN_END volta a second time:
+                        return;
+                    } else {
+                        voltaType = Vex.Flow.Volta.type.END;
+                    }
+                    break;
+                default:
+                    break;
+            }
+            this.stave.setVoltaType(voltaType, repetitionInstruction.endingIndices[0], 0);
         }
     }
 
@@ -269,7 +307,6 @@ export class VexFlowMeasure extends StaffMeasure {
         this.stave.setWidth(width * unitInPixels);
         // Force the width of the Begin Instructions
         //this.stave.setNoteStartX(this.beginInstructionsWidth * UnitInPixels);
-
     }
 
     /**
@@ -293,6 +330,8 @@ export class VexFlowMeasure extends StaffMeasure {
         for (const voiceID in this.vfVoices) {
             if (this.vfVoices.hasOwnProperty(voiceID)) {
                 this.vfVoices[voiceID].draw(ctx, this.stave);
+                // this.vfVoices[voiceID].tickables.forEach(t => t.getBoundingBox().draw(ctx));
+                // this.vfVoices[voiceID].tickables.forEach(t => t.getBoundingBox().draw(ctx));
             }
         }
         // Draw beams
@@ -324,16 +363,15 @@ export class VexFlowMeasure extends StaffMeasure {
         }
     }
 
+    // this currently formats multiple measures, see VexFlowMusicSheetCalculator.formatMeasures()
     public format(): void {
         // If this is the first stave in the vertical measure, call the format
         // method to set the width of all the voices
         if (this.formatVoices) {
-            // The width of the voices does not include the instructions (StaveModifiers)
-            this.formatVoices((this.PositionAndShape.BorderRight - this.beginInstructionsWidth - this.endInstructionsWidth) * unitInPixels);
+            // set the width of the voices to the current measure width:
+            // (The width of the voices does not include the instructions (StaveModifiers))
+            this.formatVoices((this.PositionAndShape.Size.width - this.beginInstructionsWidth - this.endInstructionsWidth) * unitInPixels);
         }
-
-        // Force the width of the Begin Instructions
-        this.stave.setNoteStartX(this.stave.getX() + unitInPixels * this.beginInstructionsWidth);
     }
 
     /**
@@ -392,7 +430,6 @@ export class VexFlowMeasure extends StaffMeasure {
 
             // check if this voice has just been found the first time:
             if (latestVoiceTimestamp === undefined) {
-
                 // if this voice is new, check for a gap from measure start to the start of the current voice entry:
                 const gapFromMeasureStart: Fraction = Fraction.minus(gNotesStartTimestamp, this.parentSourceMeasure.AbsoluteTimestamp);
                 if (gapFromMeasureStart.RealValue > 0) {
@@ -421,6 +458,8 @@ export class VexFlowMeasure extends StaffMeasure {
 
             // finally set the latest timestamp of this voice to the end timestamp of the longest note in the current voiceEntry:
             latestVoiceTimestamp = gNotesEndTimestamp;
+
+
         }
 
         const measureEndTimestamp: Fraction = Fraction.plus(this.parentSourceMeasure.AbsoluteTimestamp, this.parentSourceMeasure.Duration);
@@ -510,18 +549,27 @@ export class VexFlowMeasure extends StaffMeasure {
                     let autoStemBeam: boolean = true;
                     for (const gve of voiceEntries) {
                         if (gve.parentVoiceEntry.ParentVoice === psBeam.Notes[0].ParentVoiceEntry.ParentVoice) {
-                            autoStemBeam = gve.parentVoiceEntry.StemDirection === StemDirectionType.Undefined;
+                            autoStemBeam = gve.parentVoiceEntry.WantedStemDirection === StemDirectionType.Undefined;
                         }
                     }
 
+                    let isGraceBeam: boolean = false;
                     for (const entry of voiceEntries) {
                         const note: Vex.Flow.StaveNote = ((<VexFlowVoiceEntry>entry).vfStaveNote as StaveNote);
                         if (note !== undefined) {
                           notes.push(note);
                         }
+                        if (entry.parentVoiceEntry.IsGrace) {
+                            isGraceBeam = true;
+                        }
                     }
                     if (notes.length > 1) {
                         const vfBeam: Vex.Flow.Beam = new Vex.Flow.Beam(notes, autoStemBeam);
+                        if (isGraceBeam) {
+                            // smaller beam, as in Vexflow.GraceNoteGroup.beamNotes()
+                            (<any>vfBeam).render_options.beam_width = 3;
+                            (<any>vfBeam).render_options.partial_beam_length = 4;
+                        }
                         vfbeams.push(vfBeam);
                         // just a test for coloring the notes:
                         // for (let note of notes) {
@@ -557,10 +605,16 @@ export class VexFlowMeasure extends StaffMeasure {
                     }
                     if (tupletStaveNotes.length > 1) {
                       const notesOccupied: number = 2;
+                      const tuplet: Tuplet = tupletBuilder[0];
+                      const bracketed: boolean = tuplet.Bracket ||
+                        (tuplet.TupletLabelNumber === 3 && EngravingRules.Rules.TripletsBracketed) ||
+                        (tuplet.TupletLabelNumber !== 3 && EngravingRules.Rules.TupletsBracketed);
                       vftuplets.push(new Vex.Flow.Tuplet( tupletStaveNotes,
                                                           {
+                                                            bracketed: bracketed,
                                                             notes_occupied: notesOccupied,
-                                                            num_notes: tupletStaveNotes.length //, location: -1, ratioed: true
+                                                            num_notes: tupletStaveNotes.length, //, location: -1, ratioed: true
+                                                            ratioed: EngravingRules.Rules.TupletsRatioed,
                                                           }));
                     } else {
                         log.debug("Warning! Tuplet with no notes! Trying to ignore, but this is a serious problem.");
@@ -574,11 +628,50 @@ export class VexFlowMeasure extends StaffMeasure {
         return;
     }
 
-    public staffMeasureCreatedCalculations(): void {
+    public graphicalMeasureCreatedCalculations(): void {
+        let graceSlur: boolean;
+        let graceGVoiceEntriesBefore: GraphicalVoiceEntry[];
         for (const graphicalStaffEntry of this.staffEntries as VexFlowStaffEntry[]) {
+            graceSlur = false;
+            graceGVoiceEntriesBefore = [];
             // create vex flow Stave Notes:
             for (const gve of graphicalStaffEntry.graphicalVoiceEntries) {
-                (gve as VexFlowVoiceEntry).vfStaveNote = VexFlowConverter.StaveNote(gve);
+                if (gve.parentVoiceEntry.IsGrace) {
+                    graceGVoiceEntriesBefore.push(gve);
+                    if (!graceSlur) {
+                        graceSlur = gve.parentVoiceEntry.GraceSlur;
+                    }
+                    continue;
+                }
+                if (gve.notes[0].sourceNote.PrintObject) {
+                    (gve as VexFlowVoiceEntry).vfStaveNote = VexFlowConverter.StaveNote(gve);
+                } else {
+                    // don't render note. add ghost note, otherwise Vexflow can have issues with layouting when voices not complete.
+                    (gve as VexFlowVoiceEntry).vfStaveNote = VexFlowConverter.GhostNote(gve.notes[0].sourceNote.Length);
+                    graceGVoiceEntriesBefore = []; // if note is not rendered, its grace notes might need to be removed
+                    continue;
+                }
+                if (graceGVoiceEntriesBefore.length > 0) {
+                    const graceNotes: Vex.Flow.GraceNote[] = [];
+                    for (let i: number = 0; i < graceGVoiceEntriesBefore.length; i++) {
+                        const gveGrace: VexFlowVoiceEntry = <VexFlowVoiceEntry>graceGVoiceEntriesBefore[i];
+                        if (gveGrace.notes[0].sourceNote.PrintObject) {
+                            const vfStaveNote: StaveNote = VexFlowConverter.StaveNote(gveGrace);
+                            gveGrace.vfStaveNote = vfStaveNote;
+                            graceNotes.push(vfStaveNote);
+                        }
+                    }
+                    const graceNoteGroup: Vex.Flow.GraceNoteGroup = new Vex.Flow.GraceNoteGroup(graceNotes, graceSlur);
+                    (gve as VexFlowVoiceEntry).vfStaveNote.addModifier(0, graceNoteGroup);
+                    graceGVoiceEntriesBefore = [];
+                }
+            }
+        }
+        // remaining grace notes at end of measure, turned into stand-alone grace notes:
+        if (graceGVoiceEntriesBefore.length > 0) {
+            for (const graceGve of graceGVoiceEntriesBefore) {
+                (graceGve as VexFlowVoiceEntry).vfStaveNote = VexFlowConverter.StaveNote(graceGve);
+                graceGve.parentVoiceEntry.GraceAfterMainNote = true;
             }
         }
 
@@ -588,6 +681,11 @@ export class VexFlowMeasure extends StaffMeasure {
         const voices: Voice[] = this.getVoicesWithinMeasure();
 
         for (const voice of voices) {
+            if (voice === undefined) {
+                continue;
+            }
+            const isMainVoice: boolean = !(voice instanceof LinkedVoice);
+
             // add a vexFlow voice for this voice:
             this.vfVoices[voice.VoiceId] = new Vex.Flow.Voice({
                         beat_value: this.parentSourceMeasure.Duration.Denominator,
@@ -598,12 +696,80 @@ export class VexFlowMeasure extends StaffMeasure {
             const restFilledEntries: GraphicalVoiceEntry[] =  this.getRestFilledVexFlowStaveNotesPerVoice(voice);
             // create vex flow voices and add tickables to it:
             for (const voiceEntry of restFilledEntries) {
-                this.vfVoices[voice.VoiceId].addTickable((voiceEntry as VexFlowVoiceEntry).vfStaveNote);
+                if (voiceEntry.parentVoiceEntry) {
+                    if (voiceEntry.parentVoiceEntry.IsGrace && !voiceEntry.parentVoiceEntry.GraceAfterMainNote) {
+                        continue;
+                    }
+                }
+
+                const vexFlowVoiceEntry: VexFlowVoiceEntry = voiceEntry as VexFlowVoiceEntry;
+                if (voiceEntry.notes.length === 0 || !voiceEntry.notes[0] || !voiceEntry.notes[0].sourceNote.PrintObject) {
+                    // GhostNote, don't add modifiers like in-measure clefs
+                    this.vfVoices[voice.VoiceId].addTickable(vexFlowVoiceEntry.vfStaveNote);
+                    continue;
+                }
+
+                // check for in-measure clefs:
+                // only add clefs in main voice (to not add them twice)
+                if (isMainVoice) {
+                    const vfse: VexFlowStaffEntry = vexFlowVoiceEntry.parentStaffEntry as VexFlowStaffEntry;
+                    if (vfse && vfse.vfClefBefore !== undefined) {
+                        // add clef as NoteSubGroup so that we get modifier layouting
+                        const clefModifier: NoteSubGroup = new NoteSubGroup( [vfse.vfClefBefore] );
+                        vexFlowVoiceEntry.vfStaveNote.addModifier(0, clefModifier);
+                    }
+                }
+
+                // add fingering
+                if (voiceEntry.parentVoiceEntry && EngravingRules.Rules.RenderFingerings) {
+                    this.createFingerings(voiceEntry);
+                }
+
+                // add Arpeggio
+                if (voiceEntry.parentVoiceEntry && voiceEntry.parentVoiceEntry.Arpeggio !== undefined) {
+                    const type: ArpeggioType = voiceEntry.parentVoiceEntry.Arpeggio.type;
+                    vexFlowVoiceEntry.vfStaveNote.addStroke(0, new Vex.Flow.Stroke(type));
+                }
+
+                this.vfVoices[voice.VoiceId].addTickable(vexFlowVoiceEntry.vfStaveNote);
             }
         }
         this.createArticulations();
+        this.createOrnaments();
+        this.setStemDirectionFromVexFlow();
     }
 
+    /**
+     * Copy the stem directions chosen by VexFlow to the StemDirection variable of the graphical notes
+     */
+    private setStemDirectionFromVexFlow(): void {
+        //if StemDirection was not set then read out what VexFlow has chosen
+        for ( const vfStaffEntry of this.staffEntries ) {
+            for ( const gVoiceEntry of vfStaffEntry.graphicalVoiceEntries) {
+                for ( const gnote of gVoiceEntry.notes) {
+                    const vfnote: [StaveNote, number] = (gnote as VexFlowGraphicalNote).vfnote;
+                    if (vfnote === undefined || vfnote[0] === undefined) {
+                        continue;
+                    }
+
+                    const vfStemDir: number = vfnote[0].getStemDirection();
+                    switch (vfStemDir) {
+                        case (Vex.Flow.Stem.UP):
+                            gVoiceEntry.parentVoiceEntry.StemDirection = StemDirectionType.Up;
+                            break;
+                        case (Vex.Flow.Stem.DOWN):
+                            gVoiceEntry.parentVoiceEntry.StemDirection = StemDirectionType.Down;
+                            break;
+                        default:
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Create the articulations for all notes of the current staff entry
+     */
     private createArticulations(): void {
         for (let idx: number = 0, len: number = this.staffEntries.length; idx < len; ++idx) {
             const graphicalStaffEntry: VexFlowStaffEntry = (this.staffEntries[idx] as VexFlowStaffEntry);
@@ -611,9 +777,92 @@ export class VexFlowMeasure extends StaffMeasure {
             // create vex flow articulation:
             const graphicalVoiceEntries: GraphicalVoiceEntry[] = graphicalStaffEntry.graphicalVoiceEntries;
             for (const gve of graphicalVoiceEntries) {
-                const vfStaveNote: StaveNote = ((gve as VexFlowVoiceEntry).vfStaveNote as StaveNote);
+                const vfStaveNote: StemmableNote = (gve as VexFlowVoiceEntry).vfStaveNote;
                 VexFlowConverter.generateArticulations(vfStaveNote, gve.notes[0].sourceNote.ParentVoiceEntry.Articulations);
             }
+        }
+    }
+
+    /**
+     * Create the ornaments for all notes of the current staff entry
+     */
+    private createOrnaments(): void {
+        for (let idx: number = 0, len: number = this.staffEntries.length; idx < len; ++idx) {
+            const graphicalStaffEntry: VexFlowStaffEntry = (this.staffEntries[idx] as VexFlowStaffEntry);
+            const gvoices: { [voiceID: number]: GraphicalVoiceEntry; } = graphicalStaffEntry.graphicalVoiceEntries;
+
+            for (const voiceID in gvoices) {
+                if (gvoices.hasOwnProperty(voiceID)) {
+                    const vfStaveNote: StemmableNote = (gvoices[voiceID] as VexFlowVoiceEntry).vfStaveNote;
+                    const ornamentContainer: OrnamentContainer = gvoices[voiceID].notes[0].sourceNote.ParentVoiceEntry.OrnamentContainer;
+                    if (ornamentContainer !== undefined) {
+                        VexFlowConverter.generateOrnaments(vfStaveNote, ornamentContainer);
+                    }
+                }
+            }
+        }
+    }
+
+    private createFingerings(voiceEntry: GraphicalVoiceEntry): void {
+        const vexFlowVoiceEntry: VexFlowVoiceEntry = voiceEntry as VexFlowVoiceEntry;
+        const technicalInstructions: TechnicalInstruction[] = voiceEntry.parentVoiceEntry.TechnicalInstructions;
+        const fingeringsCount: number = technicalInstructions.length;
+        for (let i: number = 0; i < technicalInstructions.length; i++) {
+            const technicalInstruction: TechnicalInstruction = technicalInstructions[i];
+            let fingeringPosition: PlacementEnum = EngravingRules.Rules.FingeringPosition;
+            if (technicalInstruction.placement !== PlacementEnum.NotYetDefined) {
+                fingeringPosition = technicalInstruction.placement;
+            }
+            let modifierPosition: any; // Vex.Flow.Modifier.Position
+            switch (fingeringPosition) {
+                default:
+                case PlacementEnum.Left:
+                    modifierPosition = Vex.Flow.Modifier.Position.LEFT;
+                    break;
+                case PlacementEnum.Right:
+                    modifierPosition = Vex.Flow.Modifier.Position.RIGHT;
+                    break;
+                case PlacementEnum.Above:
+                    modifierPosition = Vex.Flow.Modifier.Position.ABOVE;
+                    break;
+                case PlacementEnum.Below:
+                    modifierPosition = Vex.Flow.Modifier.Position.BELOW;
+                    break;
+                case PlacementEnum.NotYetDefined: // automatic fingering placement, could be more complex/customizable
+                    const sourceStaff: Staff = voiceEntry.parentStaffEntry.sourceStaffEntry.ParentStaff;
+                    if (voiceEntry.notes.length > 1 || voiceEntry.parentStaffEntry.graphicalVoiceEntries.length > 1) {
+                        modifierPosition = Vex.Flow.Modifier.Position.LEFT;
+                    } else if (sourceStaff.idInMusicSheet === 0) {
+                        modifierPosition = Vex.Flow.Modifier.Position.ABOVE;
+                        fingeringPosition = PlacementEnum.Above;
+                    } else {
+                        modifierPosition = Vex.Flow.Modifier.Position.BELOW;
+                        fingeringPosition = PlacementEnum.Below;
+                    }
+            }
+
+            const fretFinger: Vex.Flow.FretHandFinger = new Vex.Flow.FretHandFinger(technicalInstruction.value);
+            fretFinger.setPosition(modifierPosition);
+            if (fingeringPosition === PlacementEnum.Above || fingeringPosition === PlacementEnum.Below) {
+                const offsetYSign: number = fingeringPosition === PlacementEnum.Above ? -1 : 1; // minus y is up
+                const ordering: number = fingeringPosition === PlacementEnum.Above ? i :
+                    technicalInstructions.length - 1 - i; // reverse order for fingerings below staff
+                if (EngravingRules.Rules.FingeringInsideStafflines && fingeringsCount > 1) { // y-shift for single fingering is ok
+                    // experimental, bounding boxes wrong for fretFinger above/below, better would be creating Labels
+                    // set y-shift. vexflow fretfinger simply places directly above/below note
+                    const perFingeringShift: number = fretFinger.getWidth() / 2;
+                    const shiftCount: number = fingeringsCount * 2.5;
+                    (<any>fretFinger).setOffsetY(offsetYSign * (ordering + shiftCount) * perFingeringShift);
+                } else if (!EngravingRules.Rules.FingeringInsideStafflines) { // use StringNumber for placement above/below stafflines
+                    const stringNumber: Vex.Flow.StringNumber = new Vex.Flow.StringNumber(technicalInstruction.value);
+                    (<any>stringNumber).radius = 0; // hack to remove the circle around the number
+                    stringNumber.setPosition(modifierPosition);
+                    stringNumber.setOffsetY(offsetYSign * ordering * stringNumber.getWidth() * 2 / 3);
+                    vexFlowVoiceEntry.vfStaveNote.addModifier(i, stringNumber);
+                    continue;
+                }
+            }
+            vexFlowVoiceEntry.vfStaveNote.addModifier(i, fretFinger);
         }
     }
 
@@ -629,7 +878,7 @@ export class VexFlowMeasure extends StaffMeasure {
     }
 
     /**
-     * Return the VexFlow Stave corresponding to this StaffMeasure
+     * Return the VexFlow Stave corresponding to this graphicalMeasure
      * @returns {Vex.Flow.Stave}
      */
     public getVFStave(): Vex.Flow.Stave {
@@ -641,18 +890,29 @@ export class VexFlowMeasure extends StaffMeasure {
      * space needed by Instructions (in VexFlow: StaveModifiers)
      */
     private updateInstructionWidth(): void {
-        let beginInstructionsWidth: number = 0;
-        let endInstructionsWidth: number = 0;
+        let vfBeginInstructionsWidth: number = 0;
+        let vfEndInstructionsWidth: number = 0;
         const modifiers: Vex.Flow.StaveModifier[] = this.stave.getModifiers();
         for (const mod of modifiers) {
-            if (mod.getPosition() === Vex.Flow.StaveModifier.Position.BEGIN) {
-                beginInstructionsWidth += mod.getWidth() + mod.getPadding(undefined);
-            } else if (mod.getPosition() === Vex.Flow.StaveModifier.Position.END) {
-                endInstructionsWidth += mod.getWidth() + mod.getPadding(undefined);
+            if (mod.getPosition() === StavePositionEnum.BEGIN) {  //Vex.Flow.StaveModifier.Position.BEGIN) {
+                vfBeginInstructionsWidth += mod.getWidth() + mod.getPadding(undefined);
+            } else if (mod.getPosition() === StavePositionEnum.END) { //Vex.Flow.StaveModifier.Position.END) {
+                vfEndInstructionsWidth += mod.getWidth() + mod.getPadding(undefined);
             }
         }
 
-        this.beginInstructionsWidth = beginInstructionsWidth / unitInPixels;
-        this.endInstructionsWidth = endInstructionsWidth / unitInPixels;
+        this.beginInstructionsWidth = vfBeginInstructionsWidth / unitInPixels;
+        this.endInstructionsWidth = vfEndInstructionsWidth / unitInPixels;
     }
+}
+
+// Gives the position of the Stave - replaces the function get Position() in the description of class StaveModifier in vexflow.d.ts
+// The latter gave an error because function cannot be defined in the class descriptions in vexflow.d.ts
+export enum StavePositionEnum {
+    LEFT = 1,
+    RIGHT = 2,
+    ABOVE = 3,
+    BELOW = 4,
+    BEGIN = 5,
+    END = 6
 }

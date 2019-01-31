@@ -20,16 +20,18 @@ import {ChordSymbolContainer} from "../VoiceData/ChordSymbolContainer";
 import * as log from "loglevel";
 import {MidiInstrument} from "../VoiceData/Instructions/ClefInstruction";
 import {ChordSymbolReader} from "./MusicSymbolModules/ChordSymbolReader";
-import { RepetitionInstructionReader } from "./MusicSymbolModules/RepetitionInstructionReader";
+import {ExpressionReader} from "./MusicSymbolModules/ExpressionReader";
+import {RepetitionInstructionReader} from "./MusicSymbolModules/RepetitionInstructionReader";
+import {SlurReader} from "./MusicSymbolModules/SlurReader";
+import {StemDirectionType} from "../VoiceData/VoiceEntry";
 //import Dictionary from "typescript-collections/dist/lib/Dictionary";
 
 // FIXME: The following classes are missing
 //type ChordSymbolContainer = any;
 //type SlurReader = any;
-//type ExpressionReader = any;
+//type RepetitionInstructionReader = any;
 //declare class MusicSymbolModuleFactory {
 //  public static createSlurReader(x: any): any;
-//  public static createExpressionGenerator(musicSheet: MusicSheet, instrument: Instrument, n: number);
 //}
 //
 //class MetronomeReader {
@@ -60,14 +62,14 @@ export class InstrumentReader {
       for (let i: number = 0; i < instrument.Staves.length; i++) {
         this.activeClefsHaveBeenInitialized[i] = false;
       }
-      // FIXME createExpressionGenerators(instrument.Staves.length);
-      // (*) this.slurReader = MusicSymbolModuleFactory.createSlurReader(this.musicSheet);
+      this.createExpressionGenerators(instrument.Staves.length);
+      this.slurReader = new SlurReader(this.musicSheet);
   }
 
   private repetitionInstructionReader: RepetitionInstructionReader;
   private xmlMeasureList: IXmlElement[];
   private musicSheet: MusicSheet;
-  private slurReader: any; // (*) SlurReader;
+  private slurReader: SlurReader;
   private instrument: Instrument;
   private voiceGeneratorsDict: { [n: number]: VoiceGenerator; } = {};
   private staffMainVoiceGeneratorDict: { [staffId: number]: VoiceGenerator } = {};
@@ -85,7 +87,7 @@ export class InstrumentReader {
   private activeKeyHasBeenInitialized: boolean = false;
   private abstractInstructions: [number, AbstractNotationInstruction][] = [];
   private openChordSymbolContainer: ChordSymbolContainer;
-  // (*) private expressionReaders: ExpressionReader[];
+  private expressionReaders: ExpressionReader[];
   private currentVoiceGenerator: VoiceGenerator;
   //private openSlurDict: { [n: number]: Slur; } = {};
   private maxTieNoteFraction: Fraction;
@@ -131,8 +133,13 @@ export class InstrumentReader {
       const xmlMeasureListArr: IXmlElement[] = this.xmlMeasureList[this.currentXmlMeasureIndex].elements();
       for (const xmlNode of xmlMeasureListArr) {
         if (xmlNode.name === "note") {
-          if (xmlNode.hasAttributes && xmlNode.attribute("print-object") && xmlNode.attribute("print-spacing")) {
-            continue;
+          let printObject: boolean = true;
+          if (xmlNode.hasAttributes && xmlNode.attribute("print-object") &&
+              xmlNode.attribute("print-object").value === "no") {
+              printObject = false; // note will not be rendered, but still parsed for Playback etc.
+              // if (xmlNode.attribute("print-spacing")) {
+              //   if (xmlNode.attribute("print-spacing").value === "yes" {
+              //     // TODO give spacing for invisible notes even when not displayed. might be hard with Vexflow formatting
           }
           let noteStaff: number = 1;
           if (this.instrument.Staves.length > 1) {
@@ -179,7 +186,66 @@ export class InstrumentReader {
 
           const restNote: boolean = xmlNode.element("rest") !== undefined;
           //log.info("New note found!", noteDivisions, noteDuration.toString(), restNote);
+
           const isGraceNote: boolean = xmlNode.element("grace") !== undefined || noteDivisions === 0 || isChord && lastNoteWasGrace;
+          let graceNoteSlash: boolean = false;
+          let graceSlur: boolean = false;
+          if (isGraceNote) {
+            const graceNode: IXmlElement = xmlNode.element("grace");
+            if (graceNode && graceNode.attributes()) {
+              if (graceNode.attribute("slash")) {
+                const slash: string = graceNode.attribute("slash").value;
+                if (slash === "yes") {
+                  graceNoteSlash = true;
+                }
+              }
+            }
+
+            noteDuration = this.getNoteDurationFromTypeNode(xmlNode);
+
+            const notationNode: IXmlElement = xmlNode.element("notations");
+            if (notationNode !== undefined) {
+              if (notationNode.element("slur") !== undefined) {
+                graceSlur = true;
+                // grace slurs could be non-binary, but VexFlow.GraceNoteGroup modifier system is currently only boolean for slurs.
+              }
+            }
+          }
+
+          // check for cue note
+          let isCueNote: boolean = false;
+          const typeNode: IXmlElement = xmlNode.element("type");
+          if (typeNode !== undefined) {
+            const sizeAttr: Attr = typeNode.attribute("size");
+            if (sizeAttr !== undefined && sizeAttr !== null) {
+              if (sizeAttr.value === "cue") {
+                isCueNote = true;
+              }
+            }
+          }
+
+          // check stem element
+          let stemDirectionXml: StemDirectionType = StemDirectionType.Undefined;
+          const stemNode: IXmlElement = xmlNode.element("stem");
+          if (stemNode !== undefined) {
+            switch (stemNode.value) {
+              case "down":
+                stemDirectionXml = StemDirectionType.Down;
+                break;
+              case "up":
+                stemDirectionXml = StemDirectionType.Up;
+                break;
+              case "double":
+                stemDirectionXml = StemDirectionType.Double;
+                break;
+              case "none":
+                stemDirectionXml = StemDirectionType.None;
+                break;
+              default:
+                stemDirectionXml = StemDirectionType.Undefined;
+            }
+          }
+
           let musicTimestamp: Fraction = currentFraction.clone();
           if (isChord) {
             musicTimestamp = previousFraction.clone();
@@ -191,8 +257,14 @@ export class InstrumentReader {
           ).staffEntry;
           //log.info("currentStaffEntry", this.currentStaffEntry, this.currentMeasure.VerticalSourceStaffEntryContainers.length);
 
-          if (!this.currentVoiceGenerator.hasVoiceEntry() || (!isChord && !isGraceNote && !lastNoteWasGrace) || (!lastNoteWasGrace && isGraceNote)) {
-            this.currentVoiceGenerator.createVoiceEntry(musicTimestamp, this.currentStaffEntry, !restNote);
+          if (!this.currentVoiceGenerator.hasVoiceEntry()
+            || (!isChord && !isGraceNote && !lastNoteWasGrace)
+            || (isGraceNote && !lastNoteWasGrace)
+            || (isGraceNote && !isChord)
+            || (!isGraceNote && lastNoteWasGrace)
+          ) {
+            this.currentVoiceGenerator.createVoiceEntry(musicTimestamp, this.currentStaffEntry, !restNote && !isGraceNote,
+                                                        isGraceNote, graceNoteSlash, graceSlur);
           }
           if (!isGraceNote && !isChord) {
             previousFraction = currentFraction.clone();
@@ -220,32 +292,27 @@ export class InstrumentReader {
           if (this.activeRhythm !== undefined) {
             // (*) this.musicSheet.SheetPlaybackSetting.Rhythm = this.activeRhythm.Rhythm;
           }
-          if (isTuplet) {
-            this.currentVoiceGenerator.read(
-              xmlNode, noteDuration, restNote, isGraceNote,
-              this.currentStaffEntry, this.currentMeasure,
-              measureStartAbsoluteTimestamp,
-              this.maxTieNoteFraction, isChord, guitarPro
-            );
-          } else {
-            this.currentVoiceGenerator.read(
-              xmlNode, new Fraction(noteDivisions, 4 * this.divisions),
-              restNote, isGraceNote, this.currentStaffEntry,
-              this.currentMeasure, measureStartAbsoluteTimestamp,
-              this.maxTieNoteFraction, isChord, guitarPro
-            );
+          if (!isTuplet && !isGraceNote) {
+            noteDuration = new Fraction(noteDivisions, 4 * this.divisions);
           }
+          this.currentVoiceGenerator.read(
+            xmlNode, noteDuration, restNote,
+            this.currentStaffEntry, this.currentMeasure,
+            measureStartAbsoluteTimestamp,
+            this.maxTieNoteFraction, isChord, guitarPro, printObject, isCueNote, stemDirectionXml
+          );
+
           const notationsNode: IXmlElement = xmlNode.element("notations");
           if (notationsNode !== undefined && notationsNode.element("dynamics") !== undefined) {
-            // (*) let expressionReader: ExpressionReader = this.expressionReaders[this.readExpressionStaffNumber(xmlNode) - 1];
-            //if (expressionReader !== undefined) {
-            //  expressionReader.readExpressionParameters(
-            //    xmlNode, this.instrument, this.divisions, currentFraction, previousFraction, this.currentMeasure.MeasureNumber, false
-            //  );
-            //  expressionReader.read(
-            //    xmlNode, this.currentMeasure, previousFraction
-            //  );
-            //}
+            const expressionReader: ExpressionReader = this.expressionReaders[this.readExpressionStaffNumber(xmlNode) - 1];
+            if (expressionReader !== undefined) {
+             expressionReader.readExpressionParameters(
+               xmlNode, this.instrument, this.divisions, currentFraction, previousFraction, this.currentMeasure.MeasureNumber, false
+             );
+             expressionReader.read(
+               xmlNode, this.currentMeasure, previousFraction
+             );
+          }
           }
           lastNoteWasGrace = isGraceNote;
         } else if (xmlNode.name === "attributes") {
@@ -302,39 +369,36 @@ export class InstrumentReader {
             previousFraction = new Fraction(0, 1);
           }
         } else if (xmlNode.name === "direction") {
-          // unused let directionTypeNode: IXmlElement = xmlNode.element("direction-type");
+          const directionTypeNode: IXmlElement = xmlNode.element("direction-type");
           // (*) MetronomeReader.readMetronomeInstructions(xmlNode, this.musicSheet, this.currentXmlMeasureIndex);
           let relativePositionInMeasure: number = Math.min(1, currentFraction.RealValue);
           if (this.activeRhythm !== undefined && this.activeRhythm.Rhythm !== undefined) {
             relativePositionInMeasure /= this.activeRhythm.Rhythm.RealValue;
           }
-          const directionTypeNode: IXmlElement = xmlNode.element("direction-type");
-          //let handeled: boolean = false;
+          let handeled: boolean = false;
           if (this.repetitionInstructionReader !== undefined) {
-            //handeled =
-            this.repetitionInstructionReader.handleRepetitionInstructionsFromWordsOrSymbols(directionTypeNode,
-                                                                                            relativePositionInMeasure);
+            handeled = this.repetitionInstructionReader.handleRepetitionInstructionsFromWordsOrSymbols( directionTypeNode,
+                                                                                                        relativePositionInMeasure);
           }
-          //}
-          //if (!handeled) {
-          //  let expressionReader: ExpressionReader = this.expressionReaders[0];
-          //  let staffIndex: number = this.readExpressionStaffNumber(xmlNode) - 1;
-          //  if (staffIndex < this.expressionReaders.length) {
-          //    expressionReader = this.expressionReaders[staffIndex];
-          //  }
-          //  if (expressionReader !== undefined) {
-          //    if (directionTypeNode.element("octave-shift") !== undefined) {
-          //      expressionReader.readExpressionParameters(
-          //        xmlNode, this.instrument, this.divisions, currentFraction, previousFraction, this.currentMeasure.MeasureNumber, true
-          //      );
-          //      expressionReader.addOctaveShift(xmlNode, this.currentMeasure, previousFraction.clone());
-          //    }
-          //    expressionReader.readExpressionParameters(
-          //      xmlNode, this.instrument, this.divisions, currentFraction, previousFraction, this.currentMeasure.MeasureNumber, false
-          //    );
-          //    expressionReader.read(xmlNode, this.currentMeasure, currentFraction);
-          //  }
-          //}
+          if (!handeled) {
+           let expressionReader: ExpressionReader = this.expressionReaders[0];
+           const staffIndex: number = this.readExpressionStaffNumber(xmlNode) - 1;
+           if (staffIndex < this.expressionReaders.length) {
+             expressionReader = this.expressionReaders[staffIndex];
+           }
+           if (expressionReader !== undefined) {
+             if (directionTypeNode.element("octave-shift") !== undefined) {
+               expressionReader.readExpressionParameters(
+                 xmlNode, this.instrument, this.divisions, currentFraction, previousFraction, this.currentMeasure.MeasureNumber, true
+               );
+               expressionReader.addOctaveShift(xmlNode, this.currentMeasure, previousFraction.clone());
+             }
+             expressionReader.readExpressionParameters(
+               xmlNode, this.instrument, this.divisions, currentFraction, previousFraction, this.currentMeasure.MeasureNumber, false
+             );
+             expressionReader.read(xmlNode, this.currentMeasure, currentFraction);
+           }
+          }
         } else if (xmlNode.name === "barline") {
           if (this.repetitionInstructionReader !== undefined) {
            const measureEndsSystem: boolean = false;
@@ -354,7 +418,6 @@ export class InstrumentReader {
         if (this.voiceGeneratorsDict.hasOwnProperty(j)) {
           const voiceGenerator: VoiceGenerator = this.voiceGeneratorsDict[j];
           voiceGenerator.checkForOpenBeam();
-          voiceGenerator.checkForOpenGraceNotes();
         }
       }
       if (this.currentXmlMeasureIndex === this.xmlMeasureList.length - 1) {
@@ -366,13 +429,13 @@ export class InstrumentReader {
         if (!this.activeKeyHasBeenInitialized) {
           this.createDefaultKeyInstruction();
         }
-        // (*)
-        //for (let i: number = 0; i < this.expressionReaders.length; i++) {
-        //  let reader: ExpressionReader = this.expressionReaders[i];
-        //  if (reader !== undefined) {
-        //    reader.checkForOpenExpressions(this.currentMeasure, currentFraction);
-        //  }
-        //}
+
+        for (let i: number = 0; i < this.expressionReaders.length; i++) {
+         const reader: ExpressionReader = this.expressionReaders[i];
+         if (reader !== undefined) {
+           reader.checkForOpenExpressions(this.currentMeasure, currentFraction);
+      }
+        }
       }
     } catch (e) {
       if (divisionsException) {
@@ -426,13 +489,12 @@ export class InstrumentReader {
   }
 
 
-  //private createExpressionGenerators(numberOfStaves: number): void {
-  //  // (*)
-  //  //this.expressionReaders = new Array(numberOfStaves);
-  //  //for (let i: number = 0; i < numberOfStaves; i++) {
-  //  //  this.expressionReaders[i] = MusicSymbolModuleFactory.createExpressionGenerator(this.musicSheet, this.instrument, i + 1);
-  //  //}
-  //}
+  private createExpressionGenerators(numberOfStaves: number): void {
+     this.expressionReaders = new Array(numberOfStaves);
+     for (let i: number = 0; i < numberOfStaves; i++) {
+      this.expressionReaders[i] = new ExpressionReader(this.musicSheet, this.instrument, i + 1);
+     }
+  }
 
   /**
    * Create the default [[ClefInstruction]] for the given staff index.
@@ -541,12 +603,10 @@ export class InstrumentReader {
    * @returns {Fraction}
    */
   private getNoteDurationFromTypeNode(xmlNode: IXmlElement): Fraction {
-    if (xmlNode.element("type") !== undefined) {
-      const typeNode: IXmlElement = xmlNode.element("type");
-      if (typeNode !== undefined) {
-        const type: string = typeNode.value;
-        return this.currentVoiceGenerator.getNoteDurationFromType(type);
-      }
+    const typeNode: IXmlElement = xmlNode.element("type");
+    if (typeNode !== undefined) {
+      const type: string = typeNode.value;
+      return this.currentVoiceGenerator.getNoteDurationFromType(type);
     }
     return new Fraction(0, 4 * this.divisions);
   }
@@ -686,24 +746,32 @@ export class InstrumentReader {
           keyEnum = KeyEnum.major;
           log.debug("InstrumentReader.addAbstractInstruction", errorMsg, ex);
         }
-
       }
       const keyInstruction: KeyInstruction = new KeyInstruction(undefined, key, keyEnum);
       this.abstractInstructions.push([1, keyInstruction]);
     }
     if (node.element("time") !== undefined) {
-      let symbolEnum: RhythmSymbolEnum = RhythmSymbolEnum.NONE;
       const timeNode: IXmlElement = node.element("time");
+      let symbolEnum: RhythmSymbolEnum = RhythmSymbolEnum.NONE;
+      let timePrintObject: boolean = true;
       if (timeNode !== undefined && timeNode.hasAttributes) {
-        const firstAttr: IXmlAttribute = timeNode.firstAttribute;
-        if (firstAttr.name === "symbol") {
-          if (firstAttr.value === "common") {
+        const symbolAttribute: IXmlAttribute = timeNode.attribute("symbol");
+        if (symbolAttribute) {
+          if (symbolAttribute.value === "common") {
             symbolEnum = RhythmSymbolEnum.COMMON;
-          } else if (firstAttr.value === "cut") {
+          } else if (symbolAttribute.value === "cut") {
             symbolEnum = RhythmSymbolEnum.CUT;
           }
         }
+
+        const printObjectAttribute: IXmlAttribute = timeNode.attribute("print-object");
+        if (printObjectAttribute) {
+          if (printObjectAttribute.value === "no") {
+            timePrintObject = false;
+          }
+        }
       }
+
       let num: number = 0;
       let denom: number = 0;
       const senzaMisura: boolean = (timeNode !== undefined && timeNode.element("senza-misura") !== undefined);
@@ -757,12 +825,11 @@ export class InstrumentReader {
           log.debug("InstrumentReader.addAbstractInstruction", errorMsg, ex);
         }
 
-        if ((num === 4 && denom === 4) || (num === 2 && denom === 2)) {
-          symbolEnum = RhythmSymbolEnum.NONE;
-        }
-        this.abstractInstructions.push([1, new RhythmInstruction(
+        const newRhythmInstruction: RhythmInstruction = new RhythmInstruction(
           new Fraction(num, denom, 0, false), symbolEnum
-        )]);
+        );
+        newRhythmInstruction.PrintObject = timePrintObject;
+        this.abstractInstructions.push([1, newRhythmInstruction]);
       } else {
         this.abstractInstructions.push([1, new RhythmInstruction(new Fraction(4, 4, 0, false), RhythmSymbolEnum.NONE)]);
       }
@@ -965,26 +1032,26 @@ export class InstrumentReader {
     return duration;
   }
 
-  //private readExpressionStaffNumber(xmlNode: IXmlElement): number {
-  //  let directionStaffNumber: number = 1;
-  //  if (xmlNode.element("staff") !== undefined) {
-  //    let staffNode: IXmlElement = xmlNode.element("staff");
-  //    if (staffNode !== undefined) {
-  //      try {
-  //        directionStaffNumber = parseInt(staffNode.value, 10);
-  //      } catch (ex) {
-  //        let errorMsg: string = ITextTranslation.translateText(
-  //          "ReaderErrorMessages/ExpressionStaffError", "Invalid Expression staff number -> set to default."
-  //        );
-  //        this.musicSheet.SheetErrors.pushTemp(errorMsg);
-  //        directionStaffNumber = 1;
-  //        log.debug("InstrumentReader.readExpressionStaffNumber", errorMsg, ex);
-  //      }
-  //
-  //    }
-  //  }
-  //  return directionStaffNumber;
-  //}
+  private readExpressionStaffNumber(xmlNode: IXmlElement): number {
+   let directionStaffNumber: number = 1;
+   if (xmlNode.element("staff") !== undefined) {
+     const staffNode: IXmlElement = xmlNode.element("staff");
+     if (staffNode !== undefined) {
+       try {
+         directionStaffNumber = parseInt(staffNode.value, 10);
+       } catch (ex) {
+         const errorMsg: string = ITextTranslation.translateText(
+           "ReaderErrorMessages/ExpressionStaffError", "Invalid Expression staff number -> set to default."
+         );
+         this.musicSheet.SheetErrors.pushMeasureError(errorMsg);
+         directionStaffNumber = 1;
+         log.debug("InstrumentReader.readExpressionStaffNumber", errorMsg, ex);
+       }
+
+     }
+   }
+   return directionStaffNumber;
+  }
 
   /**
    * Calculate the divisions value from the type and duration of the first MeasureNote that makes sense
@@ -1003,65 +1070,63 @@ export class InstrumentReader {
       for (let idx: number = 0, len: number = xmlMeasureListArr.length; idx < len; ++idx) {
         const xmlNode: IXmlElement = xmlMeasureListArr[idx];
         if (xmlNode.name === "note" && xmlNode.element("time-modification") === undefined) {
-          if (xmlNode.element("duration") !== undefined && xmlNode.element("type") !== undefined) {
-            const durationNode: IXmlElement = xmlNode.element("duration");
-            const typeNode: IXmlElement = xmlNode.element("type");
-            if (durationNode !== undefined && typeNode !== undefined) {
-              const type: string = typeNode.value;
-              let noteDuration: number = 0;
-              try {
-                noteDuration = parseInt(durationNode.value, 10);
-              } catch (ex) {
-                log.debug("InstrumentReader.readDivisionsFromNotes", ex);
-                continue;
-              }
+          const durationNode: IXmlElement = xmlNode.element("duration");
+          const typeNode: IXmlElement = xmlNode.element("type");
+          if (durationNode !== undefined && typeNode !== undefined) {
+            const type: string = typeNode.value;
+            let noteDuration: number = 0;
+            try {
+              noteDuration = parseInt(durationNode.value, 10);
+            } catch (ex) {
+              log.debug("InstrumentReader.readDivisionsFromNotes", ex);
+              continue;
+            }
 
-              switch (type) {
-                case "1024th":
-                  divisionsFromNote = (noteDuration / 4) * 1024;
-                  break;
-                case "512th":
-                  divisionsFromNote = (noteDuration / 4) * 512;
-                  break;
-                case "256th":
-                  divisionsFromNote = (noteDuration / 4) * 256;
-                  break;
-                case "128th":
-                  divisionsFromNote = (noteDuration / 4) * 128;
-                  break;
-                case "64th":
-                  divisionsFromNote = (noteDuration / 4) * 64;
-                  break;
-                case "32nd":
-                  divisionsFromNote = (noteDuration / 4) * 32;
-                  break;
-                case "16th":
-                  divisionsFromNote = (noteDuration / 4) * 16;
-                  break;
-                case "eighth":
-                  divisionsFromNote = (noteDuration / 4) * 8;
-                  break;
-                case "quarter":
-                  divisionsFromNote = (noteDuration / 4) * 4;
-                  break;
-                case "half":
-                  divisionsFromNote = (noteDuration / 4) * 2;
-                  break;
-                case "whole":
-                  divisionsFromNote = (noteDuration / 4);
-                  break;
-                case "breve":
-                  divisionsFromNote = (noteDuration / 4) / 2;
-                  break;
-                case "long":
-                  divisionsFromNote = (noteDuration / 4) / 4;
-                  break;
-                case "maxima":
-                  divisionsFromNote = (noteDuration / 4) / 8;
-                  break;
-                default:
-                  break;
-              }
+            switch (type) {
+              case "1024th":
+                divisionsFromNote = (noteDuration / 4) * 1024;
+                break;
+              case "512th":
+                divisionsFromNote = (noteDuration / 4) * 512;
+                break;
+              case "256th":
+                divisionsFromNote = (noteDuration / 4) * 256;
+                break;
+              case "128th":
+                divisionsFromNote = (noteDuration / 4) * 128;
+                break;
+              case "64th":
+                divisionsFromNote = (noteDuration / 4) * 64;
+                break;
+              case "32nd":
+                divisionsFromNote = (noteDuration / 4) * 32;
+                break;
+              case "16th":
+                divisionsFromNote = (noteDuration / 4) * 16;
+                break;
+              case "eighth":
+                divisionsFromNote = (noteDuration / 4) * 8;
+                break;
+              case "quarter":
+                divisionsFromNote = (noteDuration / 4) * 4;
+                break;
+              case "half":
+                divisionsFromNote = (noteDuration / 4) * 2;
+                break;
+              case "whole":
+                divisionsFromNote = (noteDuration / 4);
+                break;
+              case "breve":
+                divisionsFromNote = (noteDuration / 4) / 2;
+                break;
+              case "long":
+                divisionsFromNote = (noteDuration / 4) / 4;
+                break;
+              case "maxima":
+                divisionsFromNote = (noteDuration / 4) / 8;
+                break;
+              default:
+                break;
             }
           }
         }

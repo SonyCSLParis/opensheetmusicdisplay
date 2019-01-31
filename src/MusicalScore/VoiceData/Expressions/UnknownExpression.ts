@@ -1,20 +1,18 @@
 import {PlacementEnum, AbstractExpression} from "./AbstractExpression";
-import {TextAlignment} from "../../../Common/Enums/TextAlignment";
+import {TextAlignmentEnum} from "../../../Common/Enums/TextAlignment";
 
 export class UnknownExpression extends AbstractExpression {
-    constructor(label: string, placementEnum: PlacementEnum, textAlignment: TextAlignment, staffNumber: number) {
-        super();
+    constructor(label: string, placement: PlacementEnum, textAlignment: TextAlignmentEnum, staffNumber: number) {
+        super(placement);
         this.label = label;
-        this.placement = placementEnum;
         this.staffNumber = staffNumber;
         if (textAlignment === undefined) {
-            textAlignment = TextAlignment.LeftBottom;
+            textAlignment = TextAlignmentEnum.LeftBottom;
         }
         this.textAlignment = textAlignment;
     }
     private label: string;
-    private placement: PlacementEnum;
-    private textAlignment: TextAlignment;
+    private textAlignment: TextAlignmentEnum;
     private staffNumber: number;
 
     public get Label(): string {
@@ -32,7 +30,7 @@ export class UnknownExpression extends AbstractExpression {
     public set StaffNumber(value: number) {
         this.staffNumber = value;
     }
-    public get TextAlignment(): TextAlignment {
+    public get TextAlignment(): TextAlignmentEnum {
         return this.textAlignment;
     }
 }

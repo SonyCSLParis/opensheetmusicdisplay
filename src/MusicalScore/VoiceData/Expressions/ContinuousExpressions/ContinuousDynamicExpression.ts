@@ -3,23 +3,16 @@ import {MultiExpression} from "../MultiExpression";
 import {Fraction} from "../../../../Common/DataObjects/Fraction";
 
 export class ContinuousDynamicExpression extends AbstractExpression {
-    //constructor(placement: PlacementEnum, staffNumber: number, label: string) {
-    //    this.label = label;
-    //    this.placement = placement;
-    //    this.staffNumber = staffNumber;
-    //    this.startVolume = -1;
-    //    this.endVolume = -1;
-    //    this.setType();
-    //}
-    constructor(dynamicType: ContDynamicEnum, placement: PlacementEnum, staffNumber: number, label: string) {
-        super();
+    constructor(dynamicType: ContDynamicEnum, placement: PlacementEnum, staffNumber: number, label: string = "") {
+        super(placement);
         this.dynamicType = dynamicType;
         this.label = label;
-        this.placement = placement;
         this.staffNumber = staffNumber;
         this.startVolume = -1;
         this.endVolume = -1;
-        this.setType();
+        if (label !== "") {
+            this.setType();
+        }
     }
 
     private static listContinuousDynamicIncreasing: string[] = ["crescendo", "cresc", "cresc.", "cres."];
@@ -30,7 +23,6 @@ export class ContinuousDynamicExpression extends AbstractExpression {
     private endMultiExpression: MultiExpression;
     private startVolume: number;
     private endVolume: number;
-    private placement: PlacementEnum;
     private staffNumber: number;
     private label: string;
 

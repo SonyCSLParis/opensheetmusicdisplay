@@ -13,14 +13,28 @@ import { MXLHelper } from "../Common/FileIO/Mxl";
 import { Promise } from "es6-promise";
 import { AJAX } from "./AJAX";
 import * as log from "loglevel";
+import {DrawingParametersEnum, DrawingParameters} from "../MusicalScore/Graphical/DrawingParameters";
+import {IOSMDOptions, OSMDOptions} from "./OSMDOptions";
+import {EngravingRules} from "../MusicalScore/Graphical/EngravingRules";
+import {AbstractExpression} from "../MusicalScore/VoiceData/Expressions/AbstractExpression";
 
+/**
+ * The main class and control point of OpenSheetMusicDisplay.<br>
+ * It can display MusicXML sheet music files in an HTML element container.<br>
+ * After the constructor, use load() and render() to load and render a MusicXML file.
+ */
 export class OpenSheetMusicDisplay {
     /**
-     * The easy way of displaying a MusicXML sheet music file
-     * @param container is either the ID, or the actual "div" element which will host the music sheet
-     * @autoResize automatically resize the sheet to full page width on window resize
+     * Creates and attaches an OpenSheetMusicDisplay object to an HTML element container.<br>
+     * After the constructor, use load() and render() to load and render a MusicXML file.
+     * @param container The container element OSMD will be rendered into.<br>
+     *                  Either a string specifying the ID of an HTML container element,<br>
+     *                  or a reference to the HTML element itself (e.g. div)
+     * @param options An object for rendering options like the backend (svg/canvas) or autoResize.<br>
+     *                For defaults see the OSMDOptionsStandard method in the [[OSMDOptions]] class.
      */
-    constructor(container: string|HTMLElement, autoResize: boolean = false, backend: string = "svg") {
+    constructor(container: string|HTMLElement,
+                options: IOSMDOptions = OSMDOptions.OSMDOptionsStandard()) {
         // Store container element
         if (typeof container === "string") {
             // ID passed
@@ -33,24 +47,7 @@ export class OpenSheetMusicDisplay {
             throw new Error("Please pass a valid div container to OpenSheetMusicDisplay");
         }
 
-        if (backend === "svg") {
-            this.backend = new SvgVexFlowBackend();
-        } else {
-            this.backend = new CanvasVexFlowBackend();
-        }
-
-        this.backend.initialize(this.container);
-        this.canvas = this.backend.getCanvas();
-        const inner: HTMLElement = this.backend.getInnerElement();
-
-        // Create the drawer
-        this.drawer = new VexFlowMusicSheetDrawer(this.canvas, this.backend, false);
-        // Create the cursor
-        this.cursor = new Cursor(inner, this);
-
-        if (autoResize) {
-            this.autoResize();
-        }
+        this.setOptions(options);
     }
 
     public cursor: Cursor;
@@ -59,9 +56,11 @@ export class OpenSheetMusicDisplay {
     public container: HTMLElement;
     public canvas: HTMLElement;
     private backend: VexFlowBackend;
+    private innerElement: HTMLElement;
     private sheet: MusicSheet;
     private drawer: VexFlowMusicSheetDrawer;
     private graphic: GraphicalMusicSheet;
+    private drawingParameters: DrawingParameters;
 
     public get graphicalMusicSheet(): GraphicalMusicSheet {
         return this.graphic;
@@ -133,9 +132,15 @@ export class OpenSheetMusicDisplay {
         const score: IXmlElement = new IXmlElement(elem);
         const calc: MusicSheetCalculator = new VexFlowMusicSheetCalculator();
         const reader: MusicSheetReader = new MusicSheetReader();
-        this.sheet = reader.createMusicSheet(score, "Unknown path");
+        this.sheet = reader.createMusicSheet(score, "Untitled Score");
+        if (this.sheet === undefined) {
+            // error loading sheet, probably already logged, do nothing
+            return Promise.reject(new Error("given music sheet was incomplete or could not be loaded."));
+        }
         this.graphic = new GraphicalMusicSheet(this.sheet, calc);
-        this.cursor.init(this.sheet.MusicPartManager, this.graphic);
+        if (this.drawingParameters.drawCursors && this.cursor) {
+            this.cursor.init(this.sheet.MusicPartManager, this.graphic);
+        }
         log.info(`Loaded sheet ${this.sheet.TitleString} successfully.`);
         return Promise.resolve({});
     }
@@ -158,15 +163,9 @@ export class OpenSheetMusicDisplay {
         this.sheet.pageWidth = width / this.zoom / 10.0;
         // Calculate again
         this.graphic.reCalculate();
-        this.graphic.Cursors.length = 0;
-        /*this.graphic.Cursors.push(this.graphic.calculateCursorLineAtTimestamp(new Fraction(0, 4), OutlineAndFillStyleEnum.PlaybackCursor));
-        this.graphic.Cursors.push(this.graphic.calculateCursorLineAtTimestamp(new Fraction(1, 4), OutlineAndFillStyleEnum.PlaybackCursor));
-        this.graphic.Cursors.push(this.graphic.calculateCursorLineAtTimestamp(new Fraction(2, 4), OutlineAndFillStyleEnum.PlaybackCursor));
-        this.graphic.Cursors.push(this.graphic.calculateCursorLineAtTimestamp(new Fraction(3, 4), OutlineAndFillStyleEnum.PlaybackCursor));
-        this.graphic.Cursors.push(this.graphic.calculateCursorLineAtTimestamp(new Fraction(4, 4), OutlineAndFillStyleEnum.PlaybackCursor));
-        this.graphic.Cursors.push(this.graphic.calculateCursorLineAtTimestamp(new Fraction(5, 4), OutlineAndFillStyleEnum.PlaybackCursor));
-        this.graphic.Cursors.push(this.graphic.calculateCursorLineAtTimestamp(new Fraction(6, 4), OutlineAndFillStyleEnum.PlaybackCursor));
-        this.graphic.Cursors.push(this.graphic.calculateCursorLineAtTimestamp(new Fraction(7, 4), OutlineAndFillStyleEnum.PlaybackCursor));*/
+        if (this.drawingParameters.drawCursors) {
+            this.graphic.Cursors.length = 0;
+        }
         // Update Sheet Page
         const height: number = this.graphic.MusicPages[0].PositionAndShape.BorderBottom * 10.0 * this.zoom;
         this.drawer.clear();
@@ -174,8 +173,10 @@ export class OpenSheetMusicDisplay {
         this.drawer.scale(this.zoom);
         // Finally, draw
         this.drawer.drawSheet(this.graphic);
-        // Update the cursor position
-        this.cursor.update();
+        if (this.drawingParameters.drawCursors && this.cursor) {
+            // Update the cursor position
+            this.cursor.update();
+        }
     }
 
     /**
@@ -186,7 +187,7 @@ export class OpenSheetMusicDisplay {
     public setLogLevel(level: string): void {
         switch (level) {
             case "trace":
-                log.setLevel(log.levels.WARN);
+                log.setLevel(log.levels.TRACE);
                 break;
             case "debug":
                 log.setLevel(log.levels.DEBUG);
@@ -212,7 +213,9 @@ export class OpenSheetMusicDisplay {
      * FIXME: Probably unnecessary
      */
     private reset(): void {
-        this.cursor.hide();
+        if (this.drawingParameters.drawCursors && this.cursor) {
+            this.cursor.hide();
+        }
         this.sheet = undefined;
         this.graphic = undefined;
         this.zoom = 1.0;
@@ -224,6 +227,7 @@ export class OpenSheetMusicDisplay {
      * Attach the appropriate handler to the window.onResize event
      */
     private autoResize(): void {
+
         const self: OpenSheetMusicDisplay = this;
         this.handleResize(
             () => {
@@ -240,7 +244,9 @@ export class OpenSheetMusicDisplay {
                 //    document.documentElement.offsetWidth
                 //);
                 //self.container.style.width = width + "px";
-                self.render();
+                if (self.graphic !== undefined) {
+                    self.render();
+                }
             }
         );
     }
@@ -281,12 +287,166 @@ export class OpenSheetMusicDisplay {
             window.addEventListener("resize", resizeStart);
         }
 
-        // window.setTimeout(startCallback, 0);
-        // window.setTimeout(endCallback, 1);
+        window.setTimeout(startCallback, 0);
+        window.setTimeout(endCallback, 1);
     }
+
+    /** Enable or disable (hide) the cursor.
+     * @param enable whether to enable (true) or disable (false) the cursor
+     */
+    public enableOrDisableCursor(enable: boolean): void {
+        this.drawingParameters.drawCursors = enable;
+        if (enable) {
+            if (!this.cursor) {
+                this.cursor = new Cursor(this.innerElement, this);
+                if (this.sheet && this.graphic) { // else init is called in load()
+                    this.cursor.init(this.sheet.MusicPartManager, this.graphic);
+                }
+            }
+        } else { // disable cursor
+            if (!this.cursor) {
+                return;
+            }
+            this.cursor.hide();
+            // this.cursor = undefined;
+            // TODO cursor should be disabled, not just hidden. otherwise user can just call osmd.cursor.hide().
+            // however, this could cause null calls (cursor.next() etc), maybe that needs some solution.
+        }
+    }
+
+    //#region GETTER / SETTER
+    public setOptions(options: IOSMDOptions): void {
+        this.drawingParameters = new DrawingParameters();
+        if (options.drawingParameters) {
+            this.drawingParameters.DrawingParametersEnum =
+                (<any>DrawingParametersEnum)[options.drawingParameters.toLowerCase()];
+        }
+
+        const updateExistingBackend: boolean = this.backend !== undefined;
+        if (options.backend !== undefined || this.backend === undefined) {
+            if (updateExistingBackend) {
+                // TODO doesn't work yet, still need to create a new OSMD object
+
+                this.drawer.clear();
+
+                // musicSheetCalculator.clearSystemsAndMeasures() // maybe? don't have reference though
+                // musicSheetCalculator.clearRecreatedObjects();
+            }
+            if (options.backend === undefined || options.backend.toLowerCase() === "svg") {
+                this.backend = new SvgVexFlowBackend();
+            } else {
+                this.backend = new CanvasVexFlowBackend();
+            }
+            this.backend.initialize(this.container);
+            this.canvas = this.backend.getCanvas();
+            this.innerElement = this.backend.getInnerElement();
+            this.enableOrDisableCursor(this.drawingParameters.drawCursors);
+            // Create the drawer
+            this.drawer = new VexFlowMusicSheetDrawer(this.canvas, this.backend, this.drawingParameters);
+        }
+
+        // individual drawing parameters options
+        if (options.disableCursor) {
+            this.drawingParameters.drawCursors = false;
+            this.enableOrDisableCursor(this.drawingParameters.drawCursors);
+        }
+        // alternative to if block: this.drawingsParameters.drawCursors = options.drawCursors !== false. No if, but always sets drawingParameters.
+        // note that every option can be undefined, which doesn't mean the option should be set to false.
+        if (options.drawHiddenNotes) {
+            this.drawingParameters.drawHiddenNotes = true;
+        }
+        if (options.drawTitle !== undefined) {
+            this.drawingParameters.DrawTitle = options.drawTitle;
+            // TODO these settings are duplicate in drawingParameters and EngravingRules. Maybe we only need them in EngravingRules.
+            // this sets the parameter in DrawingParameters, which in turn sets the parameter in EngravingRules.
+            // see tuplets settings below for the immediate approach
+        }
+        if (options.drawSubtitle !== undefined) {
+            this.drawingParameters.DrawSubtitle = options.drawSubtitle;
+        }
+        if (options.drawLyricist !== undefined) {
+            this.drawingParameters.DrawLyricist = options.drawLyricist;
+        }
+        if (options.drawCredits !== undefined) {
+            this.drawingParameters.drawCredits = options.drawCredits;
+        }
+        if (options.drawPartNames !== undefined) {
+            this.drawingParameters.DrawPartNames = options.drawPartNames;
+        }
+        if (options.drawFingerings === false) {
+            EngravingRules.Rules.RenderFingerings = false;
+        }
+        if (options.fingeringPosition !== undefined) {
+            EngravingRules.Rules.FingeringPosition = AbstractExpression.PlacementEnumFromString(options.fingeringPosition);
+        }
+        if (options.fingeringInsideStafflines !== undefined) {
+            EngravingRules.Rules.FingeringInsideStafflines = options.fingeringInsideStafflines;
+        }
+        if (options.setWantedStemDirectionByXml !== undefined) {
+            EngravingRules.Rules.SetWantedStemDirectionByXml = options.setWantedStemDirectionByXml;
+        }
+        if (options.defaultColorNoteHead) {
+            this.drawingParameters.defaultColorNoteHead = options.defaultColorNoteHead;
+        }
+        if (options.defaultColorStem) {
+            this.drawingParameters.defaultColorStem = options.defaultColorStem;
+        }
+        if (options.tupletsRatioed) {
+            EngravingRules.Rules.TupletsRatioed = true;
+        }
+        if (options.tupletsBracketed) {
+            EngravingRules.Rules.TupletsBracketed = true;
+        }
+        if (options.tripletsBracketed) {
+            EngravingRules.Rules.TripletsBracketed = true;
+        }
+        if (options.autoResize) {
+            this.autoResize();
+        } else if (options.autoResize === false) { // not undefined
+            this.handleResize(
+                () => {
+                    // empty
+                },
+                () => {
+                    // empty
+            });
+        }
+    }
+
+    public set DrawSkyLine(value: boolean) {
+        if (this.drawer) {
+            this.drawer.skyLineVisible = value;
+            this.render();
+        }
+    }
+
+    public get DrawSkyLine(): boolean {
+        return this.drawer.skyLineVisible;
+    }
+
+    public set DrawBottomLine(value: boolean) {
+        if (this.drawer) {
+            this.drawer.bottomLineVisible = value;
+            this.render();
+        }
+    }
+
+    public get DrawBottomLine(): boolean {
+        return this.drawer.bottomLineVisible;
+    }
+
+    public set DrawBoundingBox(value: string) {
+        this.drawer.drawableBoundingBoxElement = value;
+        this.render();
+    }
+
+    public get DrawBoundingBox(): string {
+        return this.drawer.drawableBoundingBoxElement;
+    }
+    //#endregion
 }
 
 export { VexFlowMeasure } from "./../MusicalScore/Graphical/VexFlow/VexFlowMeasure";
 export { Fraction } from "./../Common/DataObjects/Fraction";
-export { StaffMeasure } from "./../MusicalScore/Graphical/StaffMeasure";
+export { GraphicalMeasure } from "./../MusicalScore/Graphical/GraphicalMeasure";
 export { SourceMeasure } from "./../MusicalScore/VoiceData/SourceMeasure";

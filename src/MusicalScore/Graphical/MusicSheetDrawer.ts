@@ -10,20 +10,21 @@ import {PointF2D} from "../../Common/DataObjects/PointF2D";
 import {GraphicalRectangle} from "./GraphicalRectangle";
 import {GraphicalLabel} from "./GraphicalLabel";
 import {Label} from "../Label";
-import {TextAlignment} from "../../Common/Enums/TextAlignment";
+import {TextAlignmentEnum} from "../../Common/Enums/TextAlignment";
 import {ArgumentOutOfRangeException} from "../Exceptions";
 import {SelectionStartSymbol} from "./SelectionStartSymbol";
 import {SelectionEndSymbol} from "./SelectionEndSymbol";
 import {MusicSystem} from "./MusicSystem";
-import {StaffMeasure} from "./StaffMeasure";
+import {GraphicalMeasure} from "./GraphicalMeasure";
 import {StaffLine} from "./StaffLine";
 import {SystemLine} from "./SystemLine";
 import {MusicSymbol} from "./MusicSymbol";
 import {GraphicalMusicPage} from "./GraphicalMusicPage";
 import {Instrument} from "../Instrument";
 import {MusicSymbolDrawingStyle, PhonicScoreModes} from "./DrawingMode";
-import {GraphicalOctaveShift} from "./GraphicalOctaveShift";
 import {GraphicalObject} from "./GraphicalObject";
+import { GraphicalInstantaneousDynamicExpression } from "./GraphicalInstantaneousDynamicExpression";
+import { GraphicalContinuousDynamicExpression } from "./GraphicalContinuousDynamicExpression";
 
 /**
  * Draw a [[GraphicalMusicSheet]] (through the .drawSheet method)
@@ -38,9 +39,13 @@ import {GraphicalObject} from "./GraphicalObject";
  * This class also includes the resizing and positioning of the symbols due to user interaction like zooming or panning.
  */
 export abstract class MusicSheetDrawer {
-    public drawingParameters: DrawingParameters = new DrawingParameters();
+    public drawingParameters: DrawingParameters;
     public splitScreenLineColor: number;
     public midiPlaybackAvailable: boolean;
+    public drawableBoundingBoxElement: string = process.env.DRAW_BOUNDING_BOX_ELEMENT;
+
+    public skyLineVisible: boolean = false;
+    public bottomLineVisible: boolean = false;
 
     protected rules: EngravingRules;
     protected graphicalMusicSheet: GraphicalMusicSheet;
@@ -48,14 +53,10 @@ export abstract class MusicSheetDrawer {
     private phonicScoreMode: PhonicScoreModes = PhonicScoreModes.Manual;
 
     constructor(textMeasurer: ITextMeasurer,
-                isPreviewImageDrawer: boolean = false) {
+                drawingParameters: DrawingParameters) {
         this.textMeasurer = textMeasurer;
         this.splitScreenLineColor = -1;
-        if (isPreviewImageDrawer) {
-            this.drawingParameters.setForThumbmail();
-        } else {
-            this.drawingParameters.setForAllOn();
-        }
+        this.drawingParameters = drawingParameters;
     }
 
     public set Mode(value: PhonicScoreModes) {
@@ -142,36 +143,39 @@ export abstract class MusicSheetDrawer {
         const screenPosition: PointF2D = this.applyScreenTransformation(graphicalLabel.PositionAndShape.AbsolutePosition);
         const heightInPixel: number = this.calculatePixelDistance(label.fontHeight);
         const widthInPixel: number = heightInPixel * this.textMeasurer.computeTextWidthToHeightRatio(label.text, label.font, label.fontStyle);
-        const bitmapWidth: number = <number>Math.ceil(widthInPixel);
-        const bitmapHeight: number = <number>Math.ceil(heightInPixel * 1.2);
+        const bitmapWidth: number = Math.ceil(widthInPixel);
+        const bitmapHeight: number = Math.ceil(heightInPixel * 1.2);
         switch (label.textAlignment) {
-            case TextAlignment.LeftTop:
+            // Adjust the OSMD-calculated positions to rendering coordinates
+            // These have to match the Border settings in GraphicalLabel.setLabelPositionAndShapeBorders()
+            // TODO isn't this a Vexflow-specific transformation that should be in VexflowMusicSheetDrawer?
+            case TextAlignmentEnum.LeftTop:
                 break;
-            case TextAlignment.LeftCenter:
-                screenPosition.y -= <number>bitmapHeight / 2;
+            case TextAlignmentEnum.LeftCenter:
+                screenPosition.y -= bitmapHeight / 2;
                 break;
-            case TextAlignment.LeftBottom:
+            case TextAlignmentEnum.LeftBottom:
                 screenPosition.y -= bitmapHeight;
                 break;
-            case TextAlignment.CenterTop:
-                screenPosition.x -= <number>bitmapWidth / 2;
+            case TextAlignmentEnum.CenterTop:
+                screenPosition.x -= bitmapWidth / 2;
                 break;
-            case TextAlignment.CenterCenter:
-                screenPosition.x -= <number>bitmapWidth / 2;
-                screenPosition.y -= <number>bitmapHeight / 2;
+            case TextAlignmentEnum.CenterCenter:
+                screenPosition.x -= bitmapWidth / 2;
+                screenPosition.y -= bitmapHeight / 2;
                 break;
-            case TextAlignment.CenterBottom:
-                screenPosition.x -= <number>bitmapWidth / 2;
+            case TextAlignmentEnum.CenterBottom:
+                screenPosition.x -= bitmapWidth / 2;
                 screenPosition.y -= bitmapHeight;
                 break;
-            case TextAlignment.RightTop:
+            case TextAlignmentEnum.RightTop:
                 screenPosition.x -= bitmapWidth;
                 break;
-            case TextAlignment.RightCenter:
+            case TextAlignmentEnum.RightCenter:
                 screenPosition.x -= bitmapWidth;
-                screenPosition.y -= <number>bitmapHeight / 2;
+                screenPosition.y -= bitmapHeight / 2;
                 break;
-            case TextAlignment.RightBottom:
+            case TextAlignmentEnum.RightBottom:
                 screenPosition.x -= bitmapWidth;
                 screenPosition.y -= bitmapHeight;
                 break;
@@ -227,7 +231,7 @@ export abstract class MusicSheetDrawer {
         // empty
     }
 
-    protected drawMeasure(measure: StaffMeasure): void {
+    protected drawMeasure(measure: GraphicalMeasure): void {
         throw new Error("not implemented");
     }
 
@@ -290,6 +294,16 @@ export abstract class MusicSheetDrawer {
         }
         for (const staffLine of musicSystem.StaffLines) {
             this.drawStaffLine(staffLine);
+
+            // draw lyric dashes
+            if (staffLine.LyricsDashes.length > 0) {
+                this.drawDashes(staffLine.LyricsDashes);
+            }
+
+            // draw lyric lines (e.g. LyricExtends: "dich,___")
+            if (staffLine.LyricLines.length > 0) {
+                this.drawLyricLines(staffLine.LyricLines, staffLine);
+            }
         }
         for (const systemLine of musicSystem.SystemLines) {
             this.drawSystemLineObject(systemLine);
@@ -338,6 +352,48 @@ export abstract class MusicSheetDrawer {
         if (staffLine.LyricsDashes.length > 0) {
             this.drawDashes(staffLine.LyricsDashes);
         }
+
+        this.drawOctaveShifts(staffLine);
+
+        this.drawExpressions(staffLine);
+
+        if (this.skyLineVisible) {
+            this.drawSkyLine(staffLine);
+        }
+
+        if (this.bottomLineVisible) {
+            this.drawBottomLine(staffLine);
+        }
+    }
+
+    protected drawLyricLines(lyricLines: GraphicalLine[], staffLine: StaffLine): void {
+        staffLine.LyricLines.forEach(lyricLine => {
+            // TODO maybe we should put this in the calculation (MusicSheetCalculator.calculateLyricExtend)
+            // then we can also remove staffLine argument
+            // but same addition doesn't work in calculateLyricExtend, because y-spacing happens after lyrics positioning
+            lyricLine.Start.y += staffLine.PositionAndShape.AbsolutePosition.y;
+            lyricLine.End.y += staffLine.PositionAndShape.AbsolutePosition.y;
+            lyricLine.Start.x += staffLine.PositionAndShape.AbsolutePosition.x;
+            lyricLine.End.x += staffLine.PositionAndShape.AbsolutePosition.x;
+            this.drawGraphicalLine(lyricLine, EngravingRules.Rules.LyricUnderscoreLineWidth);
+        });
+    }
+
+    protected drawExpressions(staffline: StaffLine): void {
+        // implemented by subclass (VexFlowMusicSheetDrawer)
+    }
+
+    protected drawGraphicalLine(graphicalLine: GraphicalLine, lineWidth: number, colorOrStyle: string = "black"): void {
+        /* TODO similar checks as in drawLabel
+        if (!this.isVisible(new BoundingBox(graphicalLine.Start,)) {
+            return;
+        }
+        */
+        this.drawLine(graphicalLine.Start, graphicalLine.End, colorOrStyle, lineWidth);
+    }
+
+    public drawLine(start: PointF2D, stop: PointF2D, color: string = "#FF0000FF", lineWidth: number): void {
+        // implemented by subclass (VexFlowMusicSheetDrawer)
     }
 
     /**
@@ -353,26 +409,8 @@ export abstract class MusicSheetDrawer {
     //
     // }
 
-    protected drawOctaveShift(staffLine: StaffLine, graphicalOctaveShift: GraphicalOctaveShift): void {
-        this.drawSymbol(graphicalOctaveShift.octaveSymbol, MusicSymbolDrawingStyle.Normal, graphicalOctaveShift.PositionAndShape.AbsolutePosition);
-        const absolutePos: PointF2D = staffLine.PositionAndShape.AbsolutePosition;
-        if (graphicalOctaveShift.dashesStart.x < graphicalOctaveShift.dashesEnd.x) {
-            const horizontalLine: GraphicalLine = new GraphicalLine(graphicalOctaveShift.dashesStart, graphicalOctaveShift.dashesEnd,
-                                                                    this.rules.OctaveShiftLineWidth);
-            this.drawLineAsHorizontalRectangleWithOffset(horizontalLine, absolutePos, <number>GraphicalLayers.Notes);
-        }
-        if (!graphicalOctaveShift.endsOnDifferentStaffLine || graphicalOctaveShift.isSecondPart) {
-            let verticalLine: GraphicalLine;
-            const dashEnd: PointF2D = graphicalOctaveShift.dashesEnd;
-            const octShiftVertLineLength: number = this.rules.OctaveShiftVerticalLineLength;
-            const octShiftLineWidth: number = this.rules.OctaveShiftLineWidth;
-            if (graphicalOctaveShift.octaveSymbol === MusicSymbol.VA8 || graphicalOctaveShift.octaveSymbol === MusicSymbol.MA15) {
-                verticalLine = new GraphicalLine(dashEnd, new PointF2D(dashEnd.x, dashEnd.y + octShiftVertLineLength), octShiftLineWidth);
-            } else {
-                verticalLine = new GraphicalLine(new PointF2D(dashEnd.x, dashEnd.y - octShiftVertLineLength), dashEnd, octShiftLineWidth);
-            }
-            this.drawLineAsVerticalRectangleWithOffset(verticalLine, absolutePos, <number>GraphicalLayers.Notes);
-        }
+    protected drawOctaveShifts(staffLine: StaffLine): void {
+        return;
     }
 
     protected drawStaffLines(staffLine: StaffLine): void {
@@ -392,17 +430,23 @@ export abstract class MusicSheetDrawer {
     //         drawLineAsVerticalRectangle(ending.Right, absolutePosition, <number>GraphicalLayers.Notes);
     //     this.drawLabel(ending.Label, <number>GraphicalLayers.Notes);
     // }
-    // protected drawInstantaniousDynamic(expression: GraphicalInstantaniousDynamicExpression): void {
-    //     expression.ExpressionSymbols.forEach(function (expressionSymbol) {
-    //         let position: PointF2D = expressionSymbol.PositionAndShape.AbsolutePosition;
-    //         let symbol: MusicSymbol = expressionSymbol.GetSymbol;
-    //         drawSymbol(symbol, MusicSymbolDrawingStyle.Normal, position);
-    //     });
-    // }
-    // protected drawContinuousDynamic(expression: GraphicalContinuousDynamicExpression,
-    //     absolute: PointF2D): void {
-    //     throw new Error("not implemented");
-    // }
+
+    /**
+     * Draws an instantaneous dynamic expression (p, pp, f, ff, ...) to the canvas
+     * @param instantaneousDynamic GraphicalInstantaneousDynamicExpression to be drawn
+     */
+    protected drawInstantaneousDynamic(instantaneousDynamic: GraphicalInstantaneousDynamicExpression): void {
+        throw new Error("not implemented");
+    }
+
+    /**
+     * Draws a continuous dynamic expression (wedges) to the canvas
+     * @param expression GraphicalContinuousDynamicExpression to be drawn
+     */
+    protected drawContinuousDynamic(expression: GraphicalContinuousDynamicExpression): void {
+        throw new Error("not implemented");
+    }
+
     protected drawSymbol(symbol: MusicSymbol, symbolStyle: MusicSymbolDrawingStyle, position: PointF2D,
                          scalingFactor: number = 1, layer: number = <number>GraphicalLayers.Notes): void {
         //empty
@@ -433,8 +477,8 @@ export abstract class MusicSheetDrawer {
         }
         // Draw bounding boxes for debug purposes. This has to be at the end because only
         // then all the calculations and recalculations are done
-        if (process.env.DRAW_BOUNDING_BOX_ELEMENT) {
-            this.drawBoundingBoxes(page.PositionAndShape, 0, process.env.DRAW_BOUNDING_BOX_ELEMENT);
+        if (this.drawableBoundingBoxElement) {
+            this.drawBoundingBoxes(page.PositionAndShape, 0, this.drawableBoundingBoxElement);
         }
 
     }
@@ -447,14 +491,28 @@ export abstract class MusicSheetDrawer {
      */
     private drawBoundingBoxes(startBox: BoundingBox, layer: number = 0, type: string = "all"): void {
         const dataObjectString: string = (startBox.DataObject.constructor as any).name;
-        if (startBox.BoundingRectangle !== undefined && (dataObjectString === type || type === "all")) {
-            const relBoundingRect: RectangleF2D = startBox.BoundingRectangle;
-            let tmpRect: RectangleF2D = new RectangleF2D(startBox.AbsolutePosition.x + startBox.BorderLeft,
-                                                         startBox.AbsolutePosition.y + startBox.BorderTop ,
-                                                         (relBoundingRect.width + 0), (relBoundingRect.height + 0));
+        if (dataObjectString === type || type === "all") {
+            let tmpRect: RectangleF2D = new RectangleF2D(startBox.AbsolutePosition.x + startBox.BorderMarginLeft,
+                                                         startBox.AbsolutePosition.y + startBox.BorderMarginTop,
+                                                         startBox.BorderMarginRight - startBox.BorderMarginLeft,
+                                                         startBox.BorderMarginBottom - startBox.BorderMarginTop);
+            this.drawLineAsHorizontalRectangle(new GraphicalLine(
+                                                             new PointF2D(startBox.AbsolutePosition.x - 1, startBox.AbsolutePosition.y),
+                                                             new PointF2D(startBox.AbsolutePosition.x + 1, startBox.AbsolutePosition.y),
+                                                             0.1,
+                                                             OutlineAndFillStyleEnum.BaseWritingColor),
+                                               layer - 1);
+
+            this.drawLineAsVerticalRectangle(new GraphicalLine(
+                                                                 new PointF2D(startBox.AbsolutePosition.x, startBox.AbsolutePosition.y - 1),
+                                                                 new PointF2D(startBox.AbsolutePosition.x, startBox.AbsolutePosition.y + 1),
+                                                                 0.1,
+                                                                 OutlineAndFillStyleEnum.BaseWritingColor),
+                                             layer - 1);
+
             tmpRect = this.applyScreenTransformationForRect(tmpRect);
             this.renderRectangle(tmpRect, <number>GraphicalLayers.Background, layer, 0.5);
-            this.renderLabel(new GraphicalLabel(new Label(dataObjectString), 1.2, TextAlignment.CenterCenter),
+            this.renderLabel(new GraphicalLabel(new Label(dataObjectString), 0.8, TextAlignmentEnum.CenterCenter),
                              layer, tmpRect.width, tmpRect.height, tmpRect.height, new PointF2D(tmpRect.x, tmpRect.y + 12));
         }
         layer++;

@@ -5,12 +5,11 @@ import {DynamicExpressionSymbolEnum} from "./DynamicExpressionSymbolEnum";
 import {InvalidEnumArgumentException} from "../../Exceptions";
 import * as log from "loglevel";
 
-export class InstantaniousDynamicExpression extends AbstractExpression {
+export class InstantaneousDynamicExpression extends AbstractExpression {
     constructor(dynamicExpression: string, soundDynamics: number, placement: PlacementEnum, staffNumber: number) {
-        super();
+        super(placement);
         this.dynamicEnum = DynamicEnum[dynamicExpression.toLowerCase()];
         this.soundDynamic = soundDynamics;
-        this.placement = placement;
         this.staffNumber = staffNumber;
     }
     public static dynamicToRelativeVolumeDict: { [_: string]: number; } = {
@@ -33,6 +32,7 @@ export class InstantaniousDynamicExpression extends AbstractExpression {
         "rf": 0.5,
         "rfz": 0.5,
         "sf": 0.5,
+        "sff": 0.5,
         "sffz": 0.5,
         "sfp": 0.5,
         "sfpp": 0.5,
@@ -40,16 +40,15 @@ export class InstantaniousDynamicExpression extends AbstractExpression {
     };
 
     //private static weight: number;
-    private static listInstantaniousDynamics: string[] =  [
+    private static listInstantaneousDynamics: string[] =  [
         "pppppp", "ppppp", "pppp", "ppp", "pp", "p",
         "ffffff", "fffff", "ffff", "fff", "ff", "f",
-        "mf", "mp", "sf", "sp", "spp", "fp", "rf", "rfz", "sfz", "sffz", "fz",
+        "mf", "mp", "sf", "sff", "sp", "spp", "fp", "rf", "rfz", "sfz", "sffz", "fz",
     ];
 
     private multiExpression: MultiExpression;
     private dynamicEnum: DynamicEnum;
     private soundDynamic: number;
-    private placement: PlacementEnum;
     private staffNumber: number;
     private length: number;
 
@@ -90,14 +89,14 @@ export class InstantaniousDynamicExpression extends AbstractExpression {
         return this.length;
     }
     public get MidiVolume(): number {
-        return InstantaniousDynamicExpression.dynamicToRelativeVolumeDict[this.dynamicEnum] * 127;
+        return InstantaneousDynamicExpression.dynamicToRelativeVolumeDict[this.dynamicEnum] * 127;
     }
-    public static isInputStringInstantaniousDynamic(inputString: string): boolean {
+    public static isInputStringInstantaneousDynamic(inputString: string): boolean {
         if (inputString === undefined) { return false; }
-        return InstantaniousDynamicExpression.isStringInStringList(InstantaniousDynamicExpression.listInstantaniousDynamics, inputString);
+        return InstantaneousDynamicExpression.isStringInStringList(InstantaneousDynamicExpression.listInstantaneousDynamics, inputString);
     }
 
-    //public getInstantaniousDynamicSymbol(expressionSymbolEnum:DynamicExpressionSymbolEnum): FontInfo.MusicFontSymbol {
+    //public getInstantaneousDynamicSymbol(expressionSymbolEnum:DynamicExpressionSymbolEnum): FontInfo.MusicFontSymbol {
     //    switch (expressionSymbolEnum) {
     //        case DynamicExpressionSymbolEnum.p:
     //            return FontInfo.MusicFontSymbol.P;
@@ -139,11 +138,11 @@ export class InstantaniousDynamicExpression extends AbstractExpression {
         //for (let idx: number = 0, len: number = dynamic.length; idx < len; ++idx) {
         //    let c: string = dynamic[idx];
         //    let dynamicExpressionSymbol: DynamicExpressionSymbolEnum = this.getDynamicExpressionSymbol(c);
-        //    let symbol: FontInfo.MusicFontSymbol = this.getInstantaniousDynamicSymbol(dynamicExpressionSymbol);
+        //    let symbol: FontInfo.MusicFontSymbol = this.getInstantaneousDynamicSymbol(dynamicExpressionSymbol);
         //    length += FontInfo.Info.getBoundingBox(symbol).Width;
         //}
         //return length;
-        log.debug("[Andrea] instantaniousDynamicExpression: not implemented: calculateLength!");
+        log.debug("[Andrea] instantaneousDynamicExpression: not implemented: calculateLength!");
         return 0.0;
     }
 
@@ -165,13 +164,14 @@ export enum DynamicEnum {
     fffff = 12,
     ffffff = 13,
     sf = 14,
-    sfp = 15,
-    sfpp = 16,
-    fp = 17,
-    rf = 18,
-    rfz = 19,
-    sfz = 20,
-    sffz = 21,
-    fz = 22,
-    other = 23
+    sff = 15,
+    sfp = 16,
+    sfpp = 17,
+    fp = 18,
+    rf = 19,
+    rfz = 20,
+    sfz = 21,
+    sffz = 22,
+    fz = 23,
+    other = 24
 }
